@@ -1,0 +1,40 @@
+name: Compila EXE Windows
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Recupera sorgenti
+        uses: actions/checkout@v4
+
+      - name: Installa .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Compila applicazione portatile
+        run: >-
+          dotnet publish InfoPC-Tray.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          -o publish
+
+      - name: Pubblica EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: InfoPC-Tray-Windows-x64
+          path: publish/InfoPC-Tray.exe
+          if-no-files-found: error
