@@ -167,8 +167,19 @@ internal sealed class InfoForm : Form
         };
         buttons.Controls.Add(closeButton);
         buttons.Controls.Add(copyButton);
+        var footer = new Label
+        {
+            Text = "Fabio Barbon & Roberto Bertella Software (2026)",
+            Dock = DockStyle.Bottom,
+            Height = 28,
+            TextAlign = ContentAlignment.MiddleCenter,
+            ForeColor = Color.DimGray,
+            BackColor = Color.FromArgb(245, 245, 245),
+            Font = new Font("Segoe UI", 9, FontStyle.Regular)
+        };
         Controls.Add(output);
         Controls.Add(buttons);
+        Controls.Add(footer);
         FormClosing += (_, e) =>
         {
             if (!exiting)
