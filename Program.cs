@@ -280,25 +280,26 @@ internal static class ComputerInfo
         var publicIp = await publicIpTask;
 
         var report = new System.Text.StringBuilder();
-        report.AppendLine(FormatLine("Nome PC", Environment.MachineName));
+        report.AppendLine(FormatNameAndDate(Environment.MachineName, DateTime.Now));
         report.AppendLine(FormatLine("Utente", Environment.UserName));
         report.AppendLine(FormatLine("IP pubblico", publicIp));
-        report.AppendLine(FormatLine("Aggiornato", DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss")));
 
         report.AppendLine();
         report.AppendLine("DETTAGLI SCHEDE DI RETE".PadRight(82));
         if (adapters.Count == 0)
         {
-            report.AppendLine("Nessuna scheda di rete attiva con indirizzo IPv4.");
+            report.AppendLine("Nessuna scheda di rete rilevata.");
         }
         else
         {
             foreach (var adapter in adapters)
             {
-                report.AppendLine($"[{adapter.Name}]");
-                report.AppendLine(FormatLine("Descrizione", adapter.Description));
-                report.AppendLine(FormatLine("DHCP", adapter.DhcpEnabled ? "Automatico" : "Manuale"));
-                report.AppendLine(FormatLine("Indirizzo IP", string.Join(", ", adapter.IpAddresses)));
+                report.AppendLine(FormatLine("Descrizione", $"{adapter.Name} - {adapter.Description}"));
+                report.AppendLine(FormatLine("Tipo", adapter.Type));
+                report.AppendLine(FormatLine("Stato", adapter.IsConnected ? "Connesso" : "Non connesso"));
+                report.AppendLine(FormatIpAndDhcp(
+                    adapter.IpAddresses.Count == 0 ? "non disponibile" : string.Join(", ", adapter.IpAddresses),
+                    adapter.DhcpEnabled));
                 report.AppendLine(FormatLine("Gateway", adapter.Gateways.Count == 0 ? "non disponibile" : string.Join(", ", adapter.Gateways)));
                 report.AppendLine(FormatLine("DNS", adapter.DnsServers.Count == 0 ? "non disponibile" : string.Join(", ", adapter.DnsServers)));
                 report.AppendLine(FormatLine("MAC address", adapter.MacAddress));
@@ -320,8 +321,7 @@ internal static class ComputerInfo
     private static List<NetworkAdapterInfo> GetNetworkAdapters()
     {
         return NetworkInterface.GetAllNetworkInterfaces()
-            .Where(n => n.OperationalStatus == OperationalStatus.Up &&
-                        n.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
+            .Where(n => n.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
                         n.NetworkInterfaceType != NetworkInterfaceType.Tunnel)
             .Select(n =>
             {
@@ -334,6 +334,8 @@ internal static class ComputerInfo
                 return new NetworkAdapterInfo(
                     n.Name,
                     n.Description,
+                    FormatInterfaceType(n.NetworkInterfaceType),
+                    n.OperationalStatus == OperationalStatus.Up,
                     ipv4?.IsDhcpEnabled == true,
                     FormatMacAddress(n.GetPhysicalAddress()),
                     addresses,
@@ -344,10 +346,21 @@ internal static class ComputerInfo
                         .Where(d => d.AddressFamily == AddressFamily.InterNetwork)
                         .Select(d => d.ToString()).Distinct().ToList());
             })
-            .Where(a => a.IpAddresses.Count > 0)
-            .OrderBy(a => a.Name)
+            .OrderByDescending(a => a.IsConnected)
+            .ThenBy(a => a.Name)
             .ToList();
     }
+
+    private static string FormatInterfaceType(NetworkInterfaceType type) => type switch
+    {
+        NetworkInterfaceType.Wireless80211 => "Wi-Fi",
+        NetworkInterfaceType.Ethernet => "Ethernet",
+        NetworkInterfaceType.GigabitEthernet => "Ethernet Gigabit",
+        NetworkInterfaceType.FastEthernetFx => "Ethernet Fast",
+        NetworkInterfaceType.FastEthernetT => "Ethernet Fast",
+        NetworkInterfaceType.Ppp => "VPN / PPP",
+        _ => type.ToString()
+    };
 
     private static string FormatMacAddress(PhysicalAddress address)
     {
@@ -356,6 +369,22 @@ internal static class ComputerInfo
     }
 
     private static string FormatLine(string label, string value) => $"{label.PadRight(16)}: {value}";
+
+    private static string FormatIpAndDhcp(string ipAddress, bool dhcpEnabled)
+    {
+        var left = FormatLine("Indirizzo IP", ipAddress);
+        var right = $"DHCP: {(dhcpEnabled ? "Automatico" : "Manuale")}";
+        var spaces = Math.Max(2, 82 - left.Length - right.Length);
+        return left + new string(' ', spaces) + right;
+    }
+
+    private static string FormatNameAndDate(string computerName, DateTime dateTime)
+    {
+        var left = FormatLine("Nome PC", computerName);
+        var right = dateTime.ToString("dd/MM/yyyy HH:mm:ss");
+        var spaces = Math.Max(2, 82 - left.Length - right.Length);
+        return left + new string(' ', spaces) + right;
+    }
 
     private static async Task<string> GetPublicIpAsync()
     {
@@ -382,6 +411,8 @@ internal static class ComputerInfo
     private sealed record NetworkAdapterInfo(
         string Name,
         string Description,
+        string Type,
+        bool IsConnected,
         bool DhcpEnabled,
         string MacAddress,
         List<string> IpAddresses,
