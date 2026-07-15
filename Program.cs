@@ -133,26 +133,39 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
 internal sealed class InfoForm : Form
 {
-    private readonly TextBox output;
+    private readonly RichTextBox output;
     private bool exiting;
 
     public InfoForm()
     {
         Text = "InfoPC Tray - Informazioni di rete";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(620, 480);
-        Size = new Size(760, 650);
+        MinimumSize = new Size(700, 540);
+        Size = new Size(860, 720);
         ShowIcon = true;
-        output = new TextBox
+
+        var title = new Label
+        {
+            Text = "INFORMAZIONI DEL COMPUTER E DELLA RETE",
+            Dock = DockStyle.Top,
+            Height = 48,
+            TextAlign = ContentAlignment.MiddleCenter,
+            BackColor = Color.FromArgb(0, 120, 215),
+            ForeColor = Color.White,
+            Font = new Font("Segoe UI", 13, FontStyle.Bold)
+        };
+
+        output = new RichTextBox
         {
             Dock = DockStyle.Fill,
-            Multiline = true,
             ReadOnly = true,
-            ScrollBars = ScrollBars.Both,
+            ScrollBars = RichTextBoxScrollBars.Both,
             WordWrap = false,
-            Font = new Font("Consolas", 10),
+            Font = new Font("Consolas", 10.5f),
             BackColor = Color.White,
-            BorderStyle = BorderStyle.FixedSingle
+            BorderStyle = BorderStyle.None,
+            DetectUrls = false,
+            Margin = new Padding(14)
         };
         var copyButton = new Button { Text = "Copia tutto", AutoSize = true };
         copyButton.Click += (_, _) => Clipboard.SetText(output.Text);
@@ -169,9 +182,9 @@ internal sealed class InfoForm : Form
         buttons.Controls.Add(copyButton);
         var footer = new Label
         {
-            Text = "Fabio Barbon & Roberto Bertella Software (2026)",
+            Text = "Fabio Barbon & Roberto Bertella Software (2026)  -  Versione 1.0",
             Dock = DockStyle.Bottom,
-            Height = 28,
+            Height = 30,
             TextAlign = ContentAlignment.MiddleCenter,
             ForeColor = Color.DimGray,
             BackColor = Color.FromArgb(245, 245, 245),
@@ -180,6 +193,7 @@ internal sealed class InfoForm : Form
         Controls.Add(output);
         Controls.Add(buttons);
         Controls.Add(footer);
+        Controls.Add(title);
         FormClosing += (_, e) =>
         {
             if (!exiting)
@@ -190,8 +204,36 @@ internal sealed class InfoForm : Form
         };
     }
 
-    public void SetLoading() => output.Text = "Lettura delle informazioni in corso...";
-    public void SetText(string text) => output.Text = text;
+    public void SetLoading()
+    {
+        output.Clear();
+        output.SelectionColor = Color.DimGray;
+        output.AppendText("Lettura delle informazioni in corso...");
+    }
+
+    public void SetText(string text)
+    {
+        output.Clear();
+        output.Text = text;
+        output.SelectAll();
+        output.SelectionFont = new Font("Consolas", 10.5f, FontStyle.Regular);
+        output.SelectionColor = Color.FromArgb(35, 35, 35);
+        HighlightLine("Nome PC");
+        HighlightLine("IP locale");
+        output.Select(0, 0);
+    }
+
+    private void HighlightLine(string label)
+    {
+        var start = output.Text.IndexOf(label, StringComparison.Ordinal);
+        if (start < 0) return;
+        var end = output.Text.IndexOf('\n', start);
+        if (end < 0) end = output.Text.Length;
+        output.Select(start, end - start);
+        output.SelectionFont = new Font("Consolas", 10.5f, FontStyle.Bold);
+        output.SelectionColor = Color.FromArgb(0, 90, 170);
+    }
+
     public void CloseForExit() { exiting = true; Close(); }
 }
 
@@ -200,37 +242,93 @@ internal static class ComputerInfo
     public static async Task<string> GetReportAsync()
     {
         var publicIpTask = GetPublicIpAsync();
-        var localIps = GetLocalIps();
+        var adapters = GetNetworkAdapters();
+        var localIps = adapters.SelectMany(a => a.IpAddresses).Distinct().Order().ToArray();
         var properties = IPGlobalProperties.GetIPGlobalProperties();
         var tcpPorts = properties.GetActiveTcpListeners().Select(x => x.Port).Distinct().Order().ToArray();
         var udpPorts = properties.GetActiveUdpListeners().Select(x => x.Port).Distinct().Order().ToArray();
         var publicIp = await publicIpTask;
 
-        return $"Nome PC: {Environment.MachineName}\r\n" +
-               $"Utente: {Environment.UserName}\r\n" +
-               $"IP locale: {(localIps.Count == 0 ? "non disponibile" : string.Join(", ", localIps))}\r\n" +
-               $"IP pubblico: {publicIp}\r\n" +
-               $"Aggiornato: {DateTime.Now:dd/MM/yyyy HH:mm:ss}\r\n\r\n" +
-               "PORTE LOCALI IN ASCOLTO\r\n" +
-               "Queste porte sono aperte sul PC, ma non sono necessariamente esposte su Internet.\r\n\r\n" +
-               $"TCP ({tcpPorts.Length}):\r\n{FormatPorts(tcpPorts)}\r\n\r\n" +
-               $"UDP ({udpPorts.Length}):\r\n{FormatPorts(udpPorts)}";
+        var report = new System.Text.StringBuilder();
+        report.AppendLine(FormatLine("Nome PC", Environment.MachineName));
+        report.AppendLine(FormatLine("Utente", Environment.UserName));
+        report.AppendLine(FormatLine("IP locale", localIps.Length == 0 ? "non disponibile" : string.Join(", ", localIps)));
+        report.AppendLine(FormatLine("IP pubblico", publicIp));
+        report.AppendLine(FormatLine("Aggiornato", DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss")));
+
+        report.AppendLine();
+        report.AppendLine("DETTAGLI SCHEDE DI RETE");
+        report.AppendLine(new string('-', 72));
+        if (adapters.Count == 0)
+        {
+            report.AppendLine("Nessuna scheda di rete attiva con indirizzo IPv4.");
+        }
+        else
+        {
+            foreach (var adapter in adapters)
+            {
+                report.AppendLine($"[{adapter.Name}]");
+                report.AppendLine(FormatLine("Descrizione", adapter.Description));
+                report.AppendLine(FormatLine("DHCP", adapter.DhcpEnabled ? "Automatico" : "Manuale"));
+                report.AppendLine(FormatLine("MAC address", adapter.MacAddress));
+                report.AppendLine(FormatLine("Indirizzo IP", string.Join(", ", adapter.IpAddresses)));
+                report.AppendLine(FormatLine("Gateway", adapter.Gateways.Count == 0 ? "non disponibile" : string.Join(", ", adapter.Gateways)));
+                report.AppendLine(FormatLine("DNS", adapter.DnsServers.Count == 0 ? "non disponibile" : string.Join(", ", adapter.DnsServers)));
+                report.AppendLine();
+            }
+        }
+
+        report.AppendLine("PORTE LOCALI IN ASCOLTO");
+        report.AppendLine(new string('-', 72));
+        report.AppendLine("Le porte indicate sono aperte sul PC, ma non necessariamente su Internet.");
+        report.AppendLine();
+        report.AppendLine($"TCP ({tcpPorts.Length}):");
+        report.AppendLine(FormatPorts(tcpPorts));
+        report.AppendLine();
+        report.AppendLine($"UDP ({udpPorts.Length}):");
+        report.Append(FormatPorts(udpPorts));
+        return report.ToString();
     }
 
-    private static List<string> GetLocalIps()
+    private static List<NetworkAdapterInfo> GetNetworkAdapters()
     {
         return NetworkInterface.GetAllNetworkInterfaces()
             .Where(n => n.OperationalStatus == OperationalStatus.Up &&
                         n.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
                         n.NetworkInterfaceType != NetworkInterfaceType.Tunnel)
-            .SelectMany(n => n.GetIPProperties().UnicastAddresses)
-            .Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork &&
-                        !a.Address.ToString().StartsWith("169.254."))
-            .Select(a => a.Address.ToString())
-            .Distinct()
-            .Order()
+            .Select(n =>
+            {
+                var properties = n.GetIPProperties();
+                var ipv4 = properties.GetIPv4Properties();
+                var addresses = properties.UnicastAddresses
+                    .Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork &&
+                                !a.Address.ToString().StartsWith("169.254."))
+                    .Select(a => a.Address.ToString()).Distinct().Order().ToList();
+                return new NetworkAdapterInfo(
+                    n.Name,
+                    n.Description,
+                    ipv4?.IsDhcpEnabled == true,
+                    FormatMacAddress(n.GetPhysicalAddress()),
+                    addresses,
+                    properties.GatewayAddresses
+                        .Where(g => g.Address.AddressFamily == AddressFamily.InterNetwork && !g.Address.Equals(IPAddress.Any))
+                        .Select(g => g.Address.ToString()).Distinct().ToList(),
+                    properties.DnsAddresses
+                        .Where(d => d.AddressFamily == AddressFamily.InterNetwork)
+                        .Select(d => d.ToString()).Distinct().ToList());
+            })
+            .Where(a => a.IpAddresses.Count > 0)
+            .OrderBy(a => a.Name)
             .ToList();
     }
+
+    private static string FormatMacAddress(PhysicalAddress address)
+    {
+        var bytes = address.GetAddressBytes();
+        return bytes.Length == 0 ? "non disponibile" : string.Join("-", bytes.Select(b => b.ToString("X2")));
+    }
+
+    private static string FormatLine(string label, string value) => $"{label.PadRight(16)}: {value}";
 
     private static async Task<string> GetPublicIpAsync()
     {
@@ -253,4 +351,13 @@ internal static class ComputerInfo
         const int perLine = 12;
         return string.Join("\r\n", ports.Chunk(perLine).Select(chunk => string.Join(", ", chunk)));
     }
+
+    private sealed record NetworkAdapterInfo(
+        string Name,
+        string Description,
+        bool DhcpEnabled,
+        string MacAddress,
+        List<string> IpAddresses,
+        List<string> Gateways,
+        List<string> DnsServers);
 }
