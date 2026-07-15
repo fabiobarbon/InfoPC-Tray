@@ -295,7 +295,6 @@ internal static class ComputerInfo
             foreach (var adapter in adapters)
             {
                 report.AppendLine(FormatLine("Descrizione", $"{adapter.Name} - {adapter.Description}"));
-                report.AppendLine(FormatLine("Tipo", adapter.Type));
                 report.AppendLine(FormatLine("Stato", adapter.IsConnected ? "Connesso" : "Non connesso"));
                 report.AppendLine(FormatIpAndDhcp(
                     adapter.IpAddresses.Count == 0 ? "non disponibile" : string.Join(", ", adapter.IpAddresses),
@@ -321,8 +320,7 @@ internal static class ComputerInfo
     private static List<NetworkAdapterInfo> GetNetworkAdapters()
     {
         return NetworkInterface.GetAllNetworkInterfaces()
-            .Where(n => n.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
-                        n.NetworkInterfaceType != NetworkInterfaceType.Tunnel)
+            .Where(IsPhysicalAdapter)
             .Select(n =>
             {
                 var properties = n.GetIPProperties();
@@ -334,7 +332,6 @@ internal static class ComputerInfo
                 return new NetworkAdapterInfo(
                     n.Name,
                     n.Description,
-                    FormatInterfaceType(n.NetworkInterfaceType),
                     n.OperationalStatus == OperationalStatus.Up,
                     ipv4?.IsDhcpEnabled == true,
                     FormatMacAddress(n.GetPhysicalAddress()),
@@ -351,16 +348,27 @@ internal static class ComputerInfo
             .ToList();
     }
 
-    private static string FormatInterfaceType(NetworkInterfaceType type) => type switch
+    private static bool IsPhysicalAdapter(NetworkInterface adapter)
     {
-        NetworkInterfaceType.Wireless80211 => "Wi-Fi",
-        NetworkInterfaceType.Ethernet => "Ethernet",
-        NetworkInterfaceType.GigabitEthernet => "Ethernet Gigabit",
-        NetworkInterfaceType.FastEthernetFx => "Ethernet Fast",
-        NetworkInterfaceType.FastEthernetT => "Ethernet Fast",
-        NetworkInterfaceType.Ppp => "VPN / PPP",
-        _ => type.ToString()
-    };
+        var physicalTypes = new[]
+        {
+            NetworkInterfaceType.Ethernet,
+            NetworkInterfaceType.GigabitEthernet,
+            NetworkInterfaceType.FastEthernetFx,
+            NetworkInterfaceType.FastEthernetT,
+            NetworkInterfaceType.Wireless80211
+        };
+        if (!physicalTypes.Contains(adapter.NetworkInterfaceType)) return false;
+
+        var text = $"{adapter.Name} {adapter.Description}".ToLowerInvariant();
+        string[] virtualMarkers =
+        {
+            "virtual", "vethernet", "hyper-v", "vmware", "virtualbox",
+            "vpn", " tap", "tun", "loopback", "npcap", "miniport",
+            "bluetooth", "container", "docker", "wsl"
+        };
+        return !virtualMarkers.Any(text.Contains);
+    }
 
     private static string FormatMacAddress(PhysicalAddress address)
     {
@@ -411,7 +419,6 @@ internal static class ComputerInfo
     private sealed record NetworkAdapterInfo(
         string Name,
         string Description,
-        string Type,
         bool IsConnected,
         bool DhcpEnabled,
         string MacAddress,
