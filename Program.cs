@@ -140,8 +140,8 @@ internal sealed class InfoForm : Form
     {
         Text = "InfoPC Tray - Informazioni di rete";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(560, 432);
-        Size = new Size(688, 576);
+        MinimumSize = new Size(616, 432);
+        Size = new Size(757, 576);
         ShowIcon = true;
 
         var title = new Label
@@ -225,7 +225,9 @@ internal sealed class InfoForm : Form
         output.SelectionFont = new Font("Consolas", 10.5f, FontStyle.Regular);
         output.SelectionColor = Color.FromArgb(35, 35, 35);
         HighlightLine("Nome PC", Color.FromArgb(0, 90, 170));
-        HighlightAllLines("Indirizzo IP", Color.LimeGreen);
+        HighlightAllLines("Indirizzo IP", Color.FromArgb(0, 90, 170), FontStyle.Bold);
+        HighlightAllLines("DETTAGLI SCHEDE DI RETE", Color.FromArgb(35, 35, 35), FontStyle.Bold | FontStyle.Underline);
+        HighlightAllLines("PORTE LOCALI IN ASCOLTO", Color.FromArgb(35, 35, 35), FontStyle.Bold | FontStyle.Underline);
         output.Select(0, 0);
     }
 
@@ -240,7 +242,7 @@ internal sealed class InfoForm : Form
         output.SelectionColor = color;
     }
 
-    private void HighlightAllLines(string label, Color color)
+    private void HighlightAllLines(string label, Color color, FontStyle style)
     {
         var searchFrom = 0;
         while (searchFrom < output.Text.Length)
@@ -250,7 +252,7 @@ internal sealed class InfoForm : Form
             var end = output.Text.IndexOf('\n', start);
             if (end < 0) end = output.Text.Length;
             output.Select(start, end - start);
-            output.SelectionFont = new Font("Consolas", 10.5f, FontStyle.Bold);
+            output.SelectionFont = new Font("Consolas", 10.5f, style);
             output.SelectionColor = color;
             searchFrom = end + 1;
         }
@@ -277,8 +279,7 @@ internal static class ComputerInfo
         report.AppendLine(FormatLine("Aggiornato", DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss")));
 
         report.AppendLine();
-        report.AppendLine("DETTAGLI SCHEDE DI RETE");
-        report.AppendLine(new string('-', 72));
+        report.AppendLine("DETTAGLI SCHEDE DI RETE".PadRight(82));
         if (adapters.Count == 0)
         {
             report.AppendLine("Nessuna scheda di rete attiva con indirizzo IPv4.");
@@ -298,8 +299,7 @@ internal static class ComputerInfo
             }
         }
 
-        report.AppendLine("PORTE LOCALI IN ASCOLTO");
-        report.AppendLine(new string('-', 72));
+        report.AppendLine("PORTE LOCALI IN ASCOLTO".PadRight(82));
         report.AppendLine("Le porte indicate sono aperte sul PC, ma non necessariamente su Internet.");
         report.AppendLine();
         report.AppendLine($"TCP ({tcpPorts.Length}):");
