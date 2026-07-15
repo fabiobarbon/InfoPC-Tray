@@ -140,8 +140,8 @@ internal sealed class InfoForm : Form
     {
         Text = "InfoPC Tray - Informazioni di rete";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(700, 540);
-        Size = new Size(860, 720);
+        MinimumSize = new Size(560, 432);
+        Size = new Size(688, 576);
         ShowIcon = true;
 
         var title = new Label
@@ -164,9 +164,15 @@ internal sealed class InfoForm : Form
             Font = new Font("Consolas", 10.5f),
             BackColor = Color.White,
             BorderStyle = BorderStyle.None,
-            DetectUrls = false,
-            Margin = new Padding(14)
+            DetectUrls = false
         };
+        var outputHost = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.White,
+            Padding = new Padding(11, 11, 0, 0)
+        };
+        outputHost.Controls.Add(output);
         var copyButton = new Button { Text = "Copia tutto", AutoSize = true };
         copyButton.Click += (_, _) => Clipboard.SetText(output.Text);
         var closeButton = new Button { Text = "Chiudi finestra", AutoSize = true };
@@ -190,7 +196,7 @@ internal sealed class InfoForm : Form
             BackColor = Color.FromArgb(245, 245, 245),
             Font = new Font("Segoe UI", 9, FontStyle.Regular)
         };
-        Controls.Add(output);
+        Controls.Add(outputHost);
         Controls.Add(buttons);
         Controls.Add(footer);
         Controls.Add(title);
@@ -218,12 +224,12 @@ internal sealed class InfoForm : Form
         output.SelectAll();
         output.SelectionFont = new Font("Consolas", 10.5f, FontStyle.Regular);
         output.SelectionColor = Color.FromArgb(35, 35, 35);
-        HighlightLine("Nome PC");
-        HighlightLine("IP locale");
+        HighlightLine("Nome PC", Color.FromArgb(0, 90, 170));
+        HighlightAllLines("Indirizzo IP", Color.LimeGreen);
         output.Select(0, 0);
     }
 
-    private void HighlightLine(string label)
+    private void HighlightLine(string label, Color color)
     {
         var start = output.Text.IndexOf(label, StringComparison.Ordinal);
         if (start < 0) return;
@@ -231,7 +237,23 @@ internal sealed class InfoForm : Form
         if (end < 0) end = output.Text.Length;
         output.Select(start, end - start);
         output.SelectionFont = new Font("Consolas", 10.5f, FontStyle.Bold);
-        output.SelectionColor = Color.FromArgb(0, 90, 170);
+        output.SelectionColor = color;
+    }
+
+    private void HighlightAllLines(string label, Color color)
+    {
+        var searchFrom = 0;
+        while (searchFrom < output.Text.Length)
+        {
+            var start = output.Text.IndexOf(label, searchFrom, StringComparison.Ordinal);
+            if (start < 0) break;
+            var end = output.Text.IndexOf('\n', start);
+            if (end < 0) end = output.Text.Length;
+            output.Select(start, end - start);
+            output.SelectionFont = new Font("Consolas", 10.5f, FontStyle.Bold);
+            output.SelectionColor = color;
+            searchFrom = end + 1;
+        }
     }
 
     public void CloseForExit() { exiting = true; Close(); }
@@ -243,7 +265,6 @@ internal static class ComputerInfo
     {
         var publicIpTask = GetPublicIpAsync();
         var adapters = GetNetworkAdapters();
-        var localIps = adapters.SelectMany(a => a.IpAddresses).Distinct().Order().ToArray();
         var properties = IPGlobalProperties.GetIPGlobalProperties();
         var tcpPorts = properties.GetActiveTcpListeners().Select(x => x.Port).Distinct().Order().ToArray();
         var udpPorts = properties.GetActiveUdpListeners().Select(x => x.Port).Distinct().Order().ToArray();
@@ -252,7 +273,6 @@ internal static class ComputerInfo
         var report = new System.Text.StringBuilder();
         report.AppendLine(FormatLine("Nome PC", Environment.MachineName));
         report.AppendLine(FormatLine("Utente", Environment.UserName));
-        report.AppendLine(FormatLine("IP locale", localIps.Length == 0 ? "non disponibile" : string.Join(", ", localIps)));
         report.AppendLine(FormatLine("IP pubblico", publicIp));
         report.AppendLine(FormatLine("Aggiornato", DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss")));
 
@@ -270,10 +290,10 @@ internal static class ComputerInfo
                 report.AppendLine($"[{adapter.Name}]");
                 report.AppendLine(FormatLine("Descrizione", adapter.Description));
                 report.AppendLine(FormatLine("DHCP", adapter.DhcpEnabled ? "Automatico" : "Manuale"));
-                report.AppendLine(FormatLine("MAC address", adapter.MacAddress));
                 report.AppendLine(FormatLine("Indirizzo IP", string.Join(", ", adapter.IpAddresses)));
                 report.AppendLine(FormatLine("Gateway", adapter.Gateways.Count == 0 ? "non disponibile" : string.Join(", ", adapter.Gateways)));
                 report.AppendLine(FormatLine("DNS", adapter.DnsServers.Count == 0 ? "non disponibile" : string.Join(", ", adapter.DnsServers)));
+                report.AppendLine(FormatLine("MAC address", adapter.MacAddress));
                 report.AppendLine();
             }
         }
