@@ -140,8 +140,8 @@ internal sealed class InfoForm : Form
     {
         Text = "InfoPC Tray - Informazioni di rete";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(616, 432);
-        Size = new Size(757, 576);
+        MinimumSize = new Size(616, 486);
+        Size = new Size(757, 630);
         ShowIcon = true;
 
         var title = new Label
@@ -179,26 +179,33 @@ internal sealed class InfoForm : Form
         closeButton.Click += (_, _) => Hide();
         var buttons = new FlowLayoutPanel
         {
-            Dock = DockStyle.Bottom,
-            Height = 48,
+            Dock = DockStyle.Right,
+            Width = 230,
             FlowDirection = FlowDirection.RightToLeft,
             Padding = new Padding(8)
         };
         buttons.Controls.Add(closeButton);
         buttons.Controls.Add(copyButton);
-        var footer = new Label
+        var signature = new Label
         {
             Text = "Fabio Barbon & Roberto Bertella Software (2026)  -  Versione 1.0",
-            Dock = DockStyle.Bottom,
-            Height = 30,
-            TextAlign = ContentAlignment.MiddleCenter,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(10, 0, 0, 0),
             ForeColor = Color.DimGray,
             BackColor = Color.FromArgb(245, 245, 245),
             Font = new Font("Segoe UI", 9, FontStyle.Regular)
         };
+        var bottomBar = new Panel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 48,
+            BackColor = Color.FromArgb(245, 245, 245)
+        };
+        bottomBar.Controls.Add(signature);
+        bottomBar.Controls.Add(buttons);
         Controls.Add(outputHost);
-        Controls.Add(buttons);
-        Controls.Add(footer);
+        Controls.Add(bottomBar);
         Controls.Add(title);
         FormClosing += (_, e) =>
         {
