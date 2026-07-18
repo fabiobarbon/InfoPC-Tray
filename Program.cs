@@ -169,17 +169,20 @@ internal sealed class InfoForm : Form
 
         var copyButton = new Button { Text = "Copia tutto", AutoSize = true };
         copyButton.Click += (_, _) => Clipboard.SetText(pages.SelectedIndex == 0 ? networkOutput.Text : hardwareOutput.Text);
+        var driverButton = new Button { Text = "Installa driver sensori", AutoSize = true };
+        driverButton.Click += async (_, _) => await InstallPawnIoAsync(driverButton);
         var closeButton = new Button { Text = "Chiudi finestra", AutoSize = true };
         closeButton.Click += (_, _) => Hide();
         var buttons = new FlowLayoutPanel
         {
             Dock = DockStyle.Right,
-            Width = 230,
+            Width = 240,
             FlowDirection = FlowDirection.RightToLeft,
             Padding = new Padding(8)
         };
         buttons.Controls.Add(closeButton);
         buttons.Controls.Add(copyButton);
+        buttons.Controls.Add(driverButton);
         var signature = new Label
         {
             Text = "Fabio Barbon & Roberto Bertella Software (2026)  -  Versione 1.0",
@@ -193,7 +196,7 @@ internal sealed class InfoForm : Form
         var bottomBar = new Panel
         {
             Dock = DockStyle.Bottom,
-            Height = 48,
+            Height = 76,
             BackColor = Color.FromArgb(245, 245, 245)
         };
         bottomBar.Controls.Add(signature);
@@ -216,6 +219,64 @@ internal sealed class InfoForm : Form
                 Hide();
             }
         };
+    }
+
+    private async Task InstallPawnIoAsync(Button button)
+    {
+        var answer = MessageBox.Show(
+            "Verrà installato PawnIO, il driver necessario per leggere i sensori di CPU, RAM e scheda madre.\n\n" +
+            "Il driver rimarrà installato in Windows, ma non avvierà un secondo programma. Continuare?",
+            "Installazione driver sensori",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Information);
+        if (answer != DialogResult.Yes) return;
+
+        button.Enabled = false;
+        button.Text = "Installazione...";
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "winget.exe",
+                Arguments = "install --id namazso.PawnIO --exact --source winget --accept-package-agreements --accept-source-agreements",
+                UseShellExecute = true,
+                Verb = "runas"
+            });
+            if (process is null) throw new InvalidOperationException("Impossibile avviare Windows Package Manager.");
+            await process.WaitForExitAsync();
+            if (process.ExitCode == 0)
+            {
+                MessageBox.Show(
+                    "PawnIO è stato installato. Chiudi completamente InfoPC Tray dall'icona vicino all'orologio e riaprilo.",
+                    "Installazione completata", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                MessageBox.Show($"Installazione non completata (codice {process.ExitCode}). Verrà aperta la pagina ufficiale di PawnIO.",
+                    "Installazione driver", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                OpenPawnIoPage();
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Windows Package Manager non è disponibile. Verrà aperta la pagina ufficiale di PawnIO.\n\n{ex.Message}",
+                "Installazione driver", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            OpenPawnIoPage();
+        }
+        finally
+        {
+            button.Text = "Installa driver sensori";
+            button.Enabled = true;
+        }
+    }
+
+    private static void OpenPawnIoPage()
+    {
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "https://github.com/namazso/PawnIO/releases/latest",
+            UseShellExecute = true
+        });
     }
 
     private static RichTextBox CreateOutputBox() => new()

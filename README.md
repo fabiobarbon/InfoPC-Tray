@@ -20,3 +20,9 @@ La GitHub Action inclusa genera `InfoPC-Tray.exe` come applicazione Windows x64 
 Le temperature di CPU, RAM, GPU e dischi sono lette direttamente da InfoPC Tray
 tramite LibreHardwareMonitor 0.9.6. Non serve avviare altri programmi. Per
 accedere ai sensori hardware, Windows richiede la conferma amministratore UAC.
+
+Se CPU, RAM o sensori della scheda madre non vengono visualizzati, premere
+`Installa driver sensori` nella finestra del programma. InfoPC Tray installerà
+PawnIO tramite Windows Package Manager. PawnIO è un driver e non è un secondo
+programma da lasciare aperto. Al termine occorre chiudere completamente e
+riavviare InfoPC Tray.
