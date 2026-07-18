@@ -171,6 +171,7 @@ internal sealed class InfoForm : Form
         copyButton.Click += (_, _) => Clipboard.SetText(pages.SelectedIndex == 0 ? networkOutput.Text : hardwareOutput.Text);
         var driverButton = new Button { Text = "Installa driver sensori", AutoSize = true };
         driverButton.Click += async (_, _) => await InstallPawnIoAsync(driverButton);
+        driverButton.Visible = false;
         var closeButton = new Button { Text = "Chiudi finestra", AutoSize = true };
         closeButton.Click += (_, _) => Hide();
         var buttons = new FlowLayoutPanel
@@ -183,6 +184,11 @@ internal sealed class InfoForm : Form
         buttons.Controls.Add(closeButton);
         buttons.Controls.Add(copyButton);
         buttons.Controls.Add(driverButton);
+        pages.SelectedIndexChanged += (_, _) =>
+        {
+            driverButton.Visible = pages.SelectedIndex == 1;
+            buttons.Width = driverButton.Visible ? 405 : 240;
+        };
         var signature = new Label
         {
             Text = "Fabio Barbon & Roberto Bertella Software (2026)  -  Versione 1.0",
@@ -321,7 +327,6 @@ internal sealed class InfoForm : Form
         SetBoxText(hardwareOutput, text);
         foreach (var section in new[] { "CPU", "GPU", "NPU", "MEMORIA RAM", "DISCHI" })
             HighlightAllLines(hardwareOutput, section.PadRight(82), Color.FromArgb(35, 35, 35), FontStyle.Bold | FontStyle.Underline);
-        HighlightAllLines(hardwareOutput, "Temperatura", Color.FromArgb(0, 120, 60), FontStyle.Bold);
         hardwareOutput.Select(0, 0);
     }
 
@@ -459,10 +464,10 @@ internal sealed class HardwareInfoProvider : IDisposable
         IEnumerable<IHardware> items,
         IEnumerable<ISensor>? fallbackTemperatureSensors = null)
     {
-        report.AppendLine(title.PadRight(82));
         var hardwareItems = items.ToList();
         if (hardwareItems.Count == 0)
         {
+            report.AppendLine(title.PadRight(82));
             report.AppendLine("Non rilevata oppure sensori non disponibili.");
             report.AppendLine();
             return;
@@ -470,15 +475,15 @@ internal sealed class HardwareInfoProvider : IDisposable
 
         foreach (var hardware in hardwareItems)
         {
-            report.AppendLine(FormatLine("Descrizione", hardware.Name));
-            var temperature = FormatTemperature(hardware);
-            if (temperature == "non disponibile" && fallbackTemperatureSensors is not null)
+            var temperature = GetTemperatureDegrees(hardware);
+            if (string.IsNullOrWhiteSpace(temperature) && fallbackTemperatureSensors is not null)
             {
                 var fallback = fallbackTemperatureSensors.OrderByDescending(s => s.Value).FirstOrDefault();
                 if (fallback is not null)
-                    temperature = $"{fallback.Value:0.0} °C ({fallback.Name})";
+                    temperature = $"{fallback.Value:0.0} °C";
             }
-            report.AppendLine(FormatLine("Temperatura", temperature));
+            report.AppendLine(FormatRightAligned(title, temperature));
+            report.AppendLine(FormatLine("Descrizione", hardware.Name));
             var load = hardware.Sensors
                 .Where(s => s.SensorType == SensorType.Load && s.Value.HasValue)
                 .OrderByDescending(s => s.Value)
@@ -491,13 +496,8 @@ internal sealed class HardwareInfoProvider : IDisposable
 
     private void AppendRamSection(System.Text.StringBuilder report, List<IHardware> hardware)
     {
-        report.AppendLine("MEMORIA RAM".PadRight(82));
         var totalBytes = ramModules.Aggregate(0UL, (total, module) => total + module.CapacityBytes);
         var freeBytes = ReadFreeMemoryBytes();
-        report.AppendLine(FormatLine("Quantita'", ramModules.Count == 0 ? "moduli non rilevati" : $"{ramModules.Count} moduli"));
-        report.AppendLine(FormatLine("Totale", totalBytes == 0 ? "non disponibile" : FormatBytes(totalBytes)));
-        report.AppendLine(FormatLine("Disponibile", freeBytes == 0 ? "non disponibile" : FormatBytes(freeBytes)));
-
         var memoryTemperature = hardware.SelectMany(h => h.Sensors.Select(s => new { Hardware = h, Sensor = s }))
             .Where(x => x.Sensor.SensorType == SensorType.Temperature && x.Sensor.Value.HasValue &&
                 (x.Hardware.HardwareType == HardwareType.Memory ||
@@ -506,9 +506,11 @@ internal sealed class HardwareInfoProvider : IDisposable
                  x.Hardware.Name.Contains("Corsair", StringComparison.OrdinalIgnoreCase) ||
                  x.Sensor.Name.Contains("SPD", StringComparison.OrdinalIgnoreCase)))
             .OrderByDescending(x => x.Sensor.Value).FirstOrDefault();
-        report.AppendLine(FormatLine("Temperatura", memoryTemperature is null
-            ? "non disponibile"
-            : $"{memoryTemperature.Sensor.Value:0.0} °C ({memoryTemperature.Sensor.Name})"));
+        var memoryDegrees = memoryTemperature is null ? "" : $"{memoryTemperature.Sensor.Value:0.0} °C";
+        report.AppendLine(FormatRightAligned("MEMORIA RAM", memoryDegrees));
+        report.AppendLine(FormatLine("Quantita'", ramModules.Count == 0 ? "moduli non rilevati" : $"{ramModules.Count} moduli"));
+        report.AppendLine(FormatLine("Totale", totalBytes == 0 ? "non disponibile" : FormatBytes(totalBytes)));
+        report.AppendLine(FormatLine("Disponibile", freeBytes == 0 ? "non disponibile" : FormatBytes(freeBytes)));
 
         for (var i = 0; i < ramModules.Count; i++)
         {
@@ -539,11 +541,10 @@ internal sealed class HardwareInfoProvider : IDisposable
         {
             var disk = diskList[i];
             var sensor = FindStorageHardware(disk.Name, storageSensors, i);
-            report.AppendLine(FormatLine($"Disco {i + 1}", disk.Name));
+            var diskDegrees = sensor is null ? "" : GetTemperatureDegrees(sensor);
+            report.AppendLine(FormatRightAligned($"Disco {i + 1}: {disk.Name}", diskDegrees));
             report.AppendLine(FormatLine("Capacita'", disk.SizeBytes == 0 ? "non disponibile" : FormatBytes(disk.SizeBytes)));
             report.AppendLine(FormatLine("Tipo", disk.Type));
-            report.AppendLine(FormatLine("Stato", disk.Health));
-            report.AppendLine(FormatLine("Temperatura", sensor is null ? "non disponibile" : FormatTemperature(sensor)));
             report.AppendLine();
         }
     }
@@ -556,14 +557,12 @@ internal sealed class HardwareInfoProvider : IDisposable
         return match ?? (index < sensors.Count ? sensors[index] : null);
     }
 
-    private static string FormatTemperature(IHardware hardware)
+    private static string GetTemperatureDegrees(IHardware hardware)
     {
-        var temperatures = hardware.Sensors
+        var sensor = hardware.Sensors
             .Where(s => s.SensorType == SensorType.Temperature && s.Value.HasValue)
-            .OrderByDescending(s => s.Value).ToList();
-        if (temperatures.Count == 0) return "non disponibile";
-        var sensor = temperatures[0];
-        return $"{sensor.Value:0.0} °C ({sensor.Name})";
+            .OrderByDescending(s => s.Value).FirstOrDefault();
+        return sensor is null ? "" : $"{sensor.Value:0.0} °C";
     }
 
     private static List<RamModuleInfo> ReadRamModules()
@@ -653,6 +652,12 @@ internal sealed class HardwareInfoProvider : IDisposable
     };
 
     private static string FormatLine(string label, string value) => $"{label.PadRight(16)}: {value}";
+    private static string FormatRightAligned(string text, string rightValue)
+    {
+        if (string.IsNullOrWhiteSpace(rightValue)) return text.PadRight(82);
+        var spaces = Math.Max(1, 82 - text.Length - rightValue.Length);
+        return text + new string(' ', spaces) + rightValue;
+    }
     private static string FormatBytes(ulong bytes) => $"{bytes / 1073741824d:0.##} GB";
     private static ulong ToUInt64(object? value) { try { return Convert.ToUInt64(value); } catch { return 0; } }
     private static uint ToUInt32(object? value) { try { return Convert.ToUInt32(value); } catch { return 0; } }
