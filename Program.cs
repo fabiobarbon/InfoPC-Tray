@@ -191,7 +191,7 @@ internal sealed class InfoForm : Form
         };
         var signature = new Label
         {
-            Text = "Fabio Barbon & Roberto Bertella Software (2026)  -  Versione 1.0",
+            Text = "Fabio Barbon & Roberto Bertella Software (2026)  -  v.1.2",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft,
             Padding = new Padding(10, 0, 0, 0),
@@ -325,8 +325,7 @@ internal sealed class InfoForm : Form
     {
         var text = hardwareProvider.GetReport();
         SetBoxText(hardwareOutput, text);
-        foreach (var section in new[] { "CPU", "GPU", "NPU", "MEMORIA RAM", "DISCHI" })
-            HighlightAllLines(hardwareOutput, section.PadRight(82), Color.FromArgb(35, 35, 35), FontStyle.Bold | FontStyle.Underline);
+        HighlightHardwareLabels(hardwareOutput);
         hardwareOutput.Select(0, 0);
     }
 
@@ -366,6 +365,23 @@ internal sealed class InfoForm : Form
             box.SelectionFont = new Font("Consolas", 10.5f, style);
             box.SelectionColor = color;
             searchFrom = end + 1;
+        }
+    }
+
+    private static void HighlightHardwareLabels(RichTextBox box)
+    {
+        var position = 0;
+        foreach (var line in box.Lines)
+        {
+            foreach (var label in new[] { "CPU", "GPU", "RAM", "DISK" })
+            {
+                if (!line.StartsWith(label.PadRight(8), StringComparison.Ordinal)) continue;
+                box.Select(position, label.Length);
+                box.SelectionFont = new Font("Consolas", 10.5f, FontStyle.Bold);
+                box.SelectionColor = Color.FromArgb(35, 35, 35);
+                break;
+            }
+            position += line.Length + 1;
         }
     }
 
@@ -467,14 +483,13 @@ internal sealed class HardwareInfoProvider : IDisposable
         var hardwareItems = items.ToList();
         if (hardwareItems.Count == 0)
         {
-            report.AppendLine(title.PadRight(82));
-            report.AppendLine("Non rilevata oppure sensori non disponibili.");
-            report.AppendLine();
+            report.AppendLine(FormatHardwareRow(title, "Non rilevata oppure sensori non disponibili.", ""));
             return;
         }
 
-        foreach (var hardware in hardwareItems)
+        for (var index = 0; index < hardwareItems.Count; index++)
         {
+            var hardware = hardwareItems[index];
             var temperature = GetTemperatureDegrees(hardware);
             if (string.IsNullOrWhiteSpace(temperature) && fallbackTemperatureSensors is not null)
             {
@@ -482,15 +497,13 @@ internal sealed class HardwareInfoProvider : IDisposable
                 if (fallback is not null)
                     temperature = $"{fallback.Value:0.0} °C";
             }
-            report.AppendLine(FormatRightAligned(title, temperature));
-            report.AppendLine(FormatLine("Descrizione", hardware.Name));
             var load = hardware.Sensors
                 .Where(s => s.SensorType == SensorType.Load && s.Value.HasValue)
                 .OrderByDescending(s => s.Value)
                 .FirstOrDefault();
-            if (load is not null)
-                report.AppendLine(FormatLine("Utilizzo", $"{load.Value:0.0}% ({load.Name})"));
-            report.AppendLine();
+            var description = hardware.Name;
+            if (load is not null) description += $" | Utilizzo: {load.Value:0.0}%";
+            report.AppendLine(FormatHardwareRow(index == 0 ? title : "", description, temperature));
         }
     }
 
@@ -507,10 +520,9 @@ internal sealed class HardwareInfoProvider : IDisposable
                  x.Sensor.Name.Contains("SPD", StringComparison.OrdinalIgnoreCase)))
             .OrderByDescending(x => x.Sensor.Value).FirstOrDefault();
         var memoryDegrees = memoryTemperature is null ? "" : $"{memoryTemperature.Sensor.Value:0.0} °C";
-        report.AppendLine(FormatRightAligned("MEMORIA RAM", memoryDegrees));
-        report.AppendLine(FormatLine("Quantita'", ramModules.Count == 0 ? "moduli non rilevati" : $"{ramModules.Count} moduli"));
-        report.AppendLine(FormatLine("Totale", totalBytes == 0 ? "non disponibile" : FormatBytes(totalBytes)));
-        report.AppendLine(FormatLine("Disponibile", freeBytes == 0 ? "non disponibile" : FormatBytes(freeBytes)));
+        var total = totalBytes == 0 ? "non disponibile" : FormatBytes(totalBytes);
+        var available = freeBytes == 0 ? "non disponibile" : FormatBytes(freeBytes);
+        report.AppendLine(FormatHardwareRow("RAM", $"Totale: {total} | Disponibile: {available}", memoryDegrees));
 
         for (var i = 0; i < ramModules.Count; i++)
         {
@@ -518,34 +530,32 @@ internal sealed class HardwareInfoProvider : IDisposable
             var description = $"{FormatBytes(module.CapacityBytes)} {module.Type}";
             if (module.SpeedMhz > 0) description += $" {module.SpeedMhz} MHz";
             if (!string.IsNullOrWhiteSpace(module.Manufacturer)) description += $" - {module.Manufacturer}";
-            report.AppendLine(FormatLine($"Modulo {i + 1}", description));
+            report.AppendLine(FormatHardwareRow("", $"Modulo {i + 1}: {description}", ""));
         }
-        report.AppendLine();
     }
 
     private void AppendDiskSection(System.Text.StringBuilder report, List<IHardware> hardware)
     {
-        report.AppendLine("DISCHI".PadRight(82));
         var storageSensors = hardware.Where(h => h.HardwareType == HardwareType.Storage).ToList();
         if (disks.Count == 0 && storageSensors.Count == 0)
         {
-            report.AppendLine("Nessun disco rilevato.");
+            report.AppendLine(FormatHardwareRow("DISK", "Nessun disco rilevato.", ""));
             return;
         }
 
         var diskList = disks.Count > 0
             ? disks
-            : storageSensors.Select(h => new DiskInfo(h.Name, 0, "tipo non disponibile", "non disponibile")).ToList();
+            : storageSensors.Select(h => new DiskInfo(h.Name, 0, "tipo non disponibile", "non disponibile", null)).ToList();
 
         for (var i = 0; i < diskList.Count; i++)
         {
             var disk = diskList[i];
             var sensor = FindStorageHardware(disk.Name, storageSensors, i);
             var diskDegrees = sensor is null ? "" : GetTemperatureDegrees(sensor);
-            report.AppendLine(FormatRightAligned($"Disco {i + 1}: {disk.Name}", diskDegrees));
-            report.AppendLine(FormatLine("Capacita'", disk.SizeBytes == 0 ? "non disponibile" : FormatBytes(disk.SizeBytes)));
-            report.AppendLine(FormatLine("Tipo", disk.Type));
-            report.AppendLine();
+            var capacity = disk.SizeBytes == 0 ? "non disponibile" : FormatBytes(disk.SizeBytes);
+            var hours = disk.PowerOnHours.HasValue ? $"{disk.PowerOnHours.Value:N0} h" : "non disponibili";
+            var description = $"{Shorten(disk.Name, 30)} | Ore: {hours} | {capacity} | {disk.Type}";
+            report.AppendLine(FormatHardwareRow(i == 0 ? "DISK" : "", description, diskDegrees));
         }
     }
 
@@ -603,15 +613,28 @@ internal sealed class HardwareInfoProvider : IDisposable
         {
             var scope = new ManagementScope(@"\\.\root\Microsoft\Windows\Storage");
             scope.Connect();
+            var powerOnHours = new Dictionary<string, ulong>(StringComparer.OrdinalIgnoreCase);
+            using (var reliabilitySearcher = new ManagementObjectSearcher(scope,
+                new ObjectQuery("SELECT DeviceId, PowerOnHours FROM MSFT_StorageReliabilityCounter")))
+            {
+                foreach (ManagementObject counter in reliabilitySearcher.Get())
+                {
+                    var deviceId = counter["DeviceId"]?.ToString();
+                    if (!string.IsNullOrWhiteSpace(deviceId) && counter["PowerOnHours"] is not null)
+                        powerOnHours[deviceId] = ToUInt64(counter["PowerOnHours"]);
+                }
+            }
             using var searcher = new ManagementObjectSearcher(scope,
-                new ObjectQuery("SELECT FriendlyName, Size, MediaType, HealthStatus FROM MSFT_PhysicalDisk"));
+                new ObjectQuery("SELECT DeviceId, FriendlyName, Size, MediaType, HealthStatus FROM MSFT_PhysicalDisk"));
             foreach (ManagementObject item in searcher.Get())
             {
+                var deviceId = item["DeviceId"]?.ToString() ?? "";
                 result.Add(new DiskInfo(
                     item["FriendlyName"]?.ToString()?.Trim() ?? "Disco fisico",
                     ToUInt64(item["Size"]),
                     FormatDiskType(ToUInt32(item["MediaType"])),
-                    FormatDiskHealth(ToUInt32(item["HealthStatus"]))));
+                    FormatDiskHealth(ToUInt32(item["HealthStatus"])),
+                    powerOnHours.TryGetValue(deviceId, out var hours) ? hours : null));
             }
         }
         catch { }
@@ -627,7 +650,7 @@ internal sealed class HardwareInfoProvider : IDisposable
                     var media = item["MediaType"]?.ToString() ?? "";
                     var type = name.Contains("SSD", StringComparison.OrdinalIgnoreCase) || media.Contains("SSD", StringComparison.OrdinalIgnoreCase)
                         ? "SSD" : "HDD / non determinato";
-                    result.Add(new DiskInfo(name, ToUInt64(item["Size"]), type, item["Status"]?.ToString() ?? "non disponibile"));
+                    result.Add(new DiskInfo(name, ToUInt64(item["Size"]), type, item["Status"]?.ToString() ?? "non disponibile", null));
                 }
             }
             catch { }
@@ -652,12 +675,18 @@ internal sealed class HardwareInfoProvider : IDisposable
     };
 
     private static string FormatLine(string label, string value) => $"{label.PadRight(16)}: {value}";
-    private static string FormatRightAligned(string text, string rightValue)
+    private static string FormatHardwareRow(string category, string description, string degrees)
     {
-        if (string.IsNullOrWhiteSpace(rightValue)) return text.PadRight(82);
-        var spaces = Math.Max(1, 82 - text.Length - rightValue.Length);
-        return text + new string(' ', spaces) + rightValue;
+        var left = category.PadRight(8) + description;
+        if (string.IsNullOrWhiteSpace(degrees)) return left;
+        var maximumLeftLength = 82 - degrees.Length - 1;
+        if (left.Length > maximumLeftLength)
+            left = left[..Math.Max(0, maximumLeftLength - 3)] + "...";
+        var spaces = Math.Max(1, 82 - left.Length - degrees.Length);
+        return left + new string(' ', spaces) + degrees;
     }
+    private static string Shorten(string value, int maximumLength) =>
+        value.Length <= maximumLength ? value : value[..Math.Max(0, maximumLength - 3)] + "...";
     private static string FormatBytes(ulong bytes) => $"{bytes / 1073741824d:0.##} GB";
     private static ulong ToUInt64(object? value) { try { return Convert.ToUInt64(value); } catch { return 0; } }
     private static uint ToUInt32(object? value) { try { return Convert.ToUInt32(value); } catch { return 0; } }
@@ -668,7 +697,7 @@ internal sealed class HardwareInfoProvider : IDisposable
     }
 
     private sealed record RamModuleInfo(ulong CapacityBytes, string Type, uint SpeedMhz, string Manufacturer);
-    private sealed record DiskInfo(string Name, ulong SizeBytes, string Type, string Health);
+    private sealed record DiskInfo(string Name, ulong SizeBytes, string Type, string Health, ulong? PowerOnHours);
 
     private sealed class UpdateVisitor : IVisitor
     {
