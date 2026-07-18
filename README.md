@@ -7,7 +7,7 @@ Applicazione portatile per Windows 11 che mostra, dall'area di notifica:
 - indirizzo IP pubblico;
 - porte TCP e UDP locali in ascolto.
 - seconda pagina hardware aggiornata ogni 2 secondi con temperature CPU, GPU,
-  eventuale NPU, RAM e dischi;
+  RAM e dischi;
 - descrizione, capacita', tipo e stato dei dischi quando disponibili;
 - quantita', tipo, velocita' e memoria RAM disponibile.
 
@@ -17,5 +17,6 @@ Il programma non richiede privilegi di amministratore. Le porte locali in ascolt
 
 La GitHub Action inclusa genera `InfoPC-Tray.exe` come applicazione Windows x64 autonoma e a file singolo.
 
-Le temperature sono lette tramite LibreHardwareMonitor. Alcuni sensori, in
-particolare NPU, RAM e determinati SSD, possono non essere esposti dal produttore.
+Le temperature di CPU, RAM, GPU e dischi sono lette direttamente da InfoPC Tray
+tramite LibreHardwareMonitor 0.9.6. Non serve avviare altri programmi. Per
+accedere ai sensori hardware, Windows richiede la conferma amministratore UAC.

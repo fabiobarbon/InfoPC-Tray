@@ -318,7 +318,6 @@ internal sealed class HardwareInfoProvider : IDisposable
     private readonly Computer computer;
     private readonly List<RamModuleInfo> ramModules;
     private readonly List<DiskInfo> disks;
-    private readonly List<string> npuDevices;
     private readonly string? initializationError;
 
     public HardwareInfoProvider()
@@ -344,7 +343,6 @@ internal sealed class HardwareInfoProvider : IDisposable
 
         ramModules = ReadRamModules();
         disks = ReadDisks();
-        npuDevices = ReadNpuDevices();
     }
 
     public string GetReport()
@@ -369,7 +367,6 @@ internal sealed class HardwareInfoProvider : IDisposable
                 h.HardwareType == HardwareType.GpuAmd ||
                 h.HardwareType == HardwareType.GpuIntel ||
                 h.HardwareType == HardwareType.GpuNvidia));
-            AppendNpuSection(report, allHardware);
             AppendRamSection(report, allHardware);
             AppendDiskSection(report, allHardware);
             return report.ToString();
@@ -431,29 +428,6 @@ internal sealed class HardwareInfoProvider : IDisposable
         }
     }
 
-    private void AppendNpuSection(System.Text.StringBuilder report, List<IHardware> hardware)
-    {
-        report.AppendLine("NPU".PadRight(82));
-        var sensorNpus = hardware.Where(h =>
-            h.Name.Contains("NPU", StringComparison.OrdinalIgnoreCase) ||
-            h.Name.Contains("Neural", StringComparison.OrdinalIgnoreCase)).ToList();
-        var names = npuDevices.Concat(sensorNpus.Select(h => h.Name)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        if (names.Count == 0)
-        {
-            report.AppendLine("Non presente oppure non rilevabile da Windows.");
-        }
-        else
-        {
-            foreach (var name in names)
-            {
-                report.AppendLine(FormatLine("Descrizione", name));
-                var match = sensorNpus.FirstOrDefault(h => h.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-                report.AppendLine(FormatLine("Temperatura", match is null ? "non disponibile" : FormatTemperature(match)));
-            }
-        }
-        report.AppendLine();
-    }
-
     private void AppendRamSection(System.Text.StringBuilder report, List<IHardware> hardware)
     {
         report.AppendLine("MEMORIA RAM".PadRight(82));
@@ -463,11 +437,17 @@ internal sealed class HardwareInfoProvider : IDisposable
         report.AppendLine(FormatLine("Totale", totalBytes == 0 ? "non disponibile" : FormatBytes(totalBytes)));
         report.AppendLine(FormatLine("Disponibile", freeBytes == 0 ? "non disponibile" : FormatBytes(freeBytes)));
 
-        var memoryHardware = hardware.Where(h => h.HardwareType == HardwareType.Memory).ToList();
-        var memoryTemperature = memoryHardware.SelectMany(h => h.Sensors)
-            .Where(s => s.SensorType == SensorType.Temperature && s.Value.HasValue)
-            .OrderByDescending(s => s.Value).FirstOrDefault();
-        report.AppendLine(FormatLine("Temperatura", memoryTemperature is null ? "non disponibile" : $"{memoryTemperature.Value:0.0} °C ({memoryTemperature.Name})"));
+        var memoryTemperature = hardware.SelectMany(h => h.Sensors.Select(s => new { Hardware = h, Sensor = s }))
+            .Where(x => x.Sensor.SensorType == SensorType.Temperature && x.Sensor.Value.HasValue &&
+                (x.Hardware.HardwareType == HardwareType.Memory ||
+                 x.Hardware.Name.Contains("Memory", StringComparison.OrdinalIgnoreCase) ||
+                 x.Hardware.Name.Contains("DIMM", StringComparison.OrdinalIgnoreCase) ||
+                 x.Hardware.Name.Contains("Corsair", StringComparison.OrdinalIgnoreCase) ||
+                 x.Sensor.Name.Contains("SPD", StringComparison.OrdinalIgnoreCase)))
+            .OrderByDescending(x => x.Sensor.Value).FirstOrDefault();
+        report.AppendLine(FormatLine("Temperatura", memoryTemperature is null
+            ? "non disponibile"
+            : $"{memoryTemperature.Sensor.Value:0.0} °C ({memoryTemperature.Sensor.Name})"));
 
         for (var i = 0; i < ramModules.Count; i++)
         {
@@ -554,25 +534,6 @@ internal sealed class HardwareInfoProvider : IDisposable
         }
         catch { }
         return 0;
-    }
-
-    private static List<string> ReadNpuDevices()
-    {
-        var result = new List<string>();
-        try
-        {
-            using var searcher = new ManagementObjectSearcher("SELECT Name FROM Win32_PnPEntity");
-            foreach (ManagementObject item in searcher.Get())
-            {
-                var name = item["Name"]?.ToString() ?? "";
-                if (name.Contains("NPU", StringComparison.OrdinalIgnoreCase) ||
-                    name.Contains("Neural Processing", StringComparison.OrdinalIgnoreCase) ||
-                    name.Contains("AI Boost", StringComparison.OrdinalIgnoreCase))
-                    result.Add(name);
-            }
-        }
-        catch { }
-        return result.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     private static List<DiskInfo> ReadDisks()
