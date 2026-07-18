@@ -444,7 +444,7 @@ internal sealed class HardwareInfoProvider : IDisposable
     private void AppendRamSection(System.Text.StringBuilder report, List<IHardware> hardware)
     {
         report.AppendLine("MEMORIA RAM".PadRight(82));
-        var totalBytes = ramModules.Sum(m => m.CapacityBytes);
+        var totalBytes = ramModules.Aggregate(0UL, (total, module) => total + module.CapacityBytes);
         var freeBytes = ReadFreeMemoryBytes();
         report.AppendLine(FormatLine("Quantita'", ramModules.Count == 0 ? "moduli non rilevati" : $"{ramModules.Count} moduli"));
         report.AppendLine(FormatLine("Totale", totalBytes == 0 ? "non disponibile" : FormatBytes(totalBytes)));
