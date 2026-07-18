@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Management;
+using System.Text.Json;
 using LibreHardwareMonitor.Hardware;
 using Microsoft.Win32;
 
@@ -141,24 +142,21 @@ internal sealed class InfoForm : Form
     private readonly HardwareInfoProvider hardwareProvider;
     private readonly System.Windows.Forms.Timer hardwareTimer;
     private bool exiting;
+    private readonly bool darkTheme = IsWindowsDarkTheme();
 
     public InfoForm()
     {
-        Text = "InfoPC Tray - Informazioni di sistema";
+        Text = "INFOPC-TRAY - INFORMAZIONI DEL COMPUTER, DELLA RETE E DELL'HARDWARE";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(616, 486);
         Size = new Size(757, 630);
         ShowIcon = true;
 
-        var title = new Label
+        var titleAccent = new Panel
         {
-            Text = "INFORMAZIONI DEL COMPUTER, DELLA RETE E DELL'HARDWARE",
             Dock = DockStyle.Top,
-            Height = 48,
-            TextAlign = ContentAlignment.MiddleCenter,
-            BackColor = Color.FromArgb(0, 120, 215),
-            ForeColor = Color.White,
-            Font = new Font("Segoe UI", 13, FontStyle.Bold)
+            Height = 6,
+            BackColor = Color.FromArgb(0, 120, 215)
         };
 
         networkOutput = CreateOutputBox();
@@ -209,7 +207,8 @@ internal sealed class InfoForm : Form
         bottomBar.Controls.Add(buttons);
         Controls.Add(pages);
         Controls.Add(bottomBar);
-        Controls.Add(title);
+        Controls.Add(titleAccent);
+        ApplyTheme(pages, bottomBar, signature);
 
         hardwareProvider = new HardwareInfoProvider();
         hardwareTimer = new System.Windows.Forms.Timer { Interval = 2000 };
@@ -225,6 +224,37 @@ internal sealed class InfoForm : Form
                 Hide();
             }
         };
+    }
+
+    private void ApplyTheme(TabControl tabControl, Panel bottomBar, Label signature)
+    {
+        var background = darkTheme ? Color.FromArgb(32, 32, 32) : Color.White;
+        var foreground = darkTheme ? Color.FromArgb(235, 235, 235) : Color.FromArgb(35, 35, 35);
+        var footer = darkTheme ? Color.FromArgb(42, 42, 42) : Color.FromArgb(245, 245, 245);
+        BackColor = background;
+        ForeColor = foreground;
+        networkOutput.BackColor = background;
+        networkOutput.ForeColor = foreground;
+        hardwareOutput.BackColor = background;
+        hardwareOutput.ForeColor = foreground;
+        foreach (TabPage page in tabControl.TabPages)
+        {
+            page.BackColor = background;
+            page.ForeColor = foreground;
+        }
+        bottomBar.BackColor = footer;
+        signature.BackColor = footer;
+        signature.ForeColor = darkTheme ? Color.Silver : Color.DimGray;
+    }
+
+    private static bool IsWindowsDarkTheme()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            return Convert.ToInt32(key?.GetValue("AppsUseLightTheme", 1)) == 0;
+        }
+        catch { return false; }
     }
 
     private async Task InstallPawnIoAsync(Button button)
@@ -313,11 +343,12 @@ internal sealed class InfoForm : Form
 
     public void SetText(string text)
     {
+        var normal = darkTheme ? Color.FromArgb(235, 235, 235) : Color.FromArgb(35, 35, 35);
         SetBoxText(networkOutput, text);
         HighlightLine(networkOutput, "Nome PC", Color.FromArgb(0, 90, 170));
         HighlightAllLines(networkOutput, "Indirizzo IP", Color.FromArgb(0, 90, 170), FontStyle.Bold);
-        HighlightAllLines(networkOutput, "DETTAGLI SCHEDE DI RETE", Color.FromArgb(35, 35, 35), FontStyle.Bold | FontStyle.Underline);
-        HighlightAllLines(networkOutput, "PORTE LOCALI IN ASCOLTO", Color.FromArgb(35, 35, 35), FontStyle.Bold | FontStyle.Underline);
+        HighlightAllLines(networkOutput, "DETTAGLI SCHEDE DI RETE", normal, FontStyle.Bold | FontStyle.Underline);
+        HighlightAllLines(networkOutput, "PORTE LOCALI IN ASCOLTO", normal, FontStyle.Bold | FontStyle.Underline);
         networkOutput.Select(0, 0);
     }
 
@@ -336,7 +367,7 @@ internal sealed class InfoForm : Form
         box.Text = text;
         box.SelectAll();
         box.SelectionFont = new Font("Consolas", 10.5f, FontStyle.Regular);
-        box.SelectionColor = Color.FromArgb(35, 35, 35);
+        box.SelectionColor = IsWindowsDarkTheme() ? Color.FromArgb(235, 235, 235) : Color.FromArgb(35, 35, 35);
         box.Select(Math.Min(firstVisible, box.TextLength), 0);
         box.ScrollToCaret();
     }
@@ -378,7 +409,7 @@ internal sealed class InfoForm : Form
                 if (!line.StartsWith(label.PadRight(8), StringComparison.Ordinal)) continue;
                 box.Select(position, label.Length);
                 box.SelectionFont = new Font("Consolas", 10.5f, FontStyle.Bold);
-                box.SelectionColor = Color.FromArgb(35, 35, 35);
+                box.SelectionColor = IsWindowsDarkTheme() ? Color.FromArgb(235, 235, 235) : Color.FromArgb(35, 35, 35);
                 break;
             }
             position += line.Length + 1;
@@ -554,8 +585,8 @@ internal sealed class HardwareInfoProvider : IDisposable
             var diskDegrees = sensor is null ? "" : GetTemperatureDegrees(sensor);
             var capacity = disk.SizeBytes == 0 ? "non disponibile" : FormatBytes(disk.SizeBytes);
             var hours = disk.PowerOnHours.HasValue ? $"{disk.PowerOnHours.Value:N0} h" : "non disponibili";
-            var description = $"{Shorten(disk.Name, 30)} | Ore: {hours} | {capacity} | {disk.Type}";
-            report.AppendLine(FormatHardwareRow(i == 0 ? "DISK" : "", description, diskDegrees));
+            report.AppendLine(FormatHardwareRow(i == 0 ? "DISK" : "", $"Descrizione: {disk.Name}", diskDegrees));
+            report.AppendLine(FormatHardwareRow("", $"Ore: {hours} | Capacita': {capacity} | Tipo: {disk.Type}", ""));
         }
     }
 
@@ -624,6 +655,8 @@ internal sealed class HardwareInfoProvider : IDisposable
                         powerOnHours[deviceId] = ToUInt64(counter["PowerOnHours"]);
                 }
             }
+            foreach (var pair in ReadPowerOnHoursViaPowerShell())
+                powerOnHours[pair.Key] = pair.Value;
             using var searcher = new ManagementObjectSearcher(scope,
                 new ObjectQuery("SELECT DeviceId, FriendlyName, Size, MediaType, HealthStatus FROM MSFT_PhysicalDisk"));
             foreach (ManagementObject item in searcher.Get())
@@ -658,6 +691,49 @@ internal sealed class HardwareInfoProvider : IDisposable
         return result;
     }
 
+    private static Dictionary<string, ulong> ReadPowerOnHoursViaPowerShell()
+    {
+        var result = new Dictionary<string, ulong>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            const string command = "$items = Get-PhysicalDisk | ForEach-Object { " +
+                "$r = $_ | Get-StorageReliabilityCounter; " +
+                "[pscustomobject]@{ DeviceId = [string]$_.DeviceId; PowerOnHours = $r.PowerOnHours } }; " +
+                "ConvertTo-Json -InputObject @($items) -Compress";
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            startInfo.ArgumentList.Add("-NoProfile");
+            startInfo.ArgumentList.Add("-NonInteractive");
+            startInfo.ArgumentList.Add("-Command");
+            startInfo.ArgumentList.Add(command);
+            using var process = Process.Start(startInfo);
+            if (process is null) return result;
+            var json = process.StandardOutput.ReadToEnd();
+            process.WaitForExit(10000);
+            if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(json)) return result;
+
+            using var document = JsonDocument.Parse(json);
+            foreach (var item in document.RootElement.EnumerateArray())
+            {
+                if (!item.TryGetProperty("DeviceId", out var idProperty) ||
+                    !item.TryGetProperty("PowerOnHours", out var hoursProperty) ||
+                    hoursProperty.ValueKind == JsonValueKind.Null)
+                    continue;
+                var id = idProperty.GetString();
+                if (!string.IsNullOrWhiteSpace(id) && hoursProperty.TryGetUInt64(out var hours))
+                    result[id] = hours;
+            }
+        }
+        catch { }
+        return result;
+    }
+
     private static string FormatRamType(uint value) => value switch
     {
         20 => "DDR", 21 => "DDR2", 24 => "DDR3", 26 => "DDR4",
@@ -685,8 +761,6 @@ internal sealed class HardwareInfoProvider : IDisposable
         var spaces = Math.Max(1, 82 - left.Length - degrees.Length);
         return left + new string(' ', spaces) + degrees;
     }
-    private static string Shorten(string value, int maximumLength) =>
-        value.Length <= maximumLength ? value : value[..Math.Max(0, maximumLength - 3)] + "...";
     private static string FormatBytes(ulong bytes) => $"{bytes / 1073741824d:0.##} GB";
     private static ulong ToUInt64(object? value) { try { return Convert.ToUInt64(value); } catch { return 0; } }
     private static uint ToUInt32(object? value) { try { return Convert.ToUInt32(value); } catch { return 0; } }
