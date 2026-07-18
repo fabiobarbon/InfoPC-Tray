@@ -330,7 +330,9 @@ internal sealed class HardwareInfoProvider : IDisposable
                 IsCpuEnabled = true,
                 IsGpuEnabled = true,
                 IsMemoryEnabled = true,
-                IsStorageEnabled = true
+                IsStorageEnabled = true,
+                IsMotherboardEnabled = true,
+                IsControllerEnabled = true
             };
             computer.Open();
         }
@@ -357,7 +359,12 @@ internal sealed class HardwareInfoProvider : IDisposable
                 report.AppendLine($"Sensori hardware non inizializzati: {initializationError}");
             report.AppendLine();
 
-            AppendHardwareSection(report, "CPU", allHardware.Where(h => h.HardwareType == HardwareType.Cpu));
+            var cpuFallbackSensors = allHardware.SelectMany(h => h.Sensors)
+                .Where(s => s.SensorType == SensorType.Temperature && s.Value.HasValue &&
+                    (s.Name.Contains("CPU", StringComparison.OrdinalIgnoreCase) ||
+                     s.Name.Contains("Package", StringComparison.OrdinalIgnoreCase) ||
+                     s.Name.Contains("Core", StringComparison.OrdinalIgnoreCase)));
+            AppendHardwareSection(report, "CPU", allHardware.Where(h => h.HardwareType == HardwareType.Cpu), cpuFallbackSensors);
             AppendHardwareSection(report, "GPU", allHardware.Where(h =>
                 h.HardwareType == HardwareType.GpuAmd ||
                 h.HardwareType == HardwareType.GpuIntel ||
@@ -375,12 +382,7 @@ internal sealed class HardwareInfoProvider : IDisposable
 
     private void UpdateHardware()
     {
-        foreach (var hardware in computer.Hardware)
-        {
-            hardware.Update();
-            foreach (var subHardware in hardware.SubHardware)
-                subHardware.Update();
-        }
+        computer.Accept(new UpdateVisitor());
     }
 
     private IEnumerable<IHardware> FlattenHardware()
@@ -393,7 +395,11 @@ internal sealed class HardwareInfoProvider : IDisposable
         }
     }
 
-    private static void AppendHardwareSection(System.Text.StringBuilder report, string title, IEnumerable<IHardware> items)
+    private static void AppendHardwareSection(
+        System.Text.StringBuilder report,
+        string title,
+        IEnumerable<IHardware> items,
+        IEnumerable<ISensor>? fallbackTemperatureSensors = null)
     {
         report.AppendLine(title.PadRight(82));
         var hardwareItems = items.ToList();
@@ -407,7 +413,14 @@ internal sealed class HardwareInfoProvider : IDisposable
         foreach (var hardware in hardwareItems)
         {
             report.AppendLine(FormatLine("Descrizione", hardware.Name));
-            report.AppendLine(FormatLine("Temperatura", FormatTemperature(hardware)));
+            var temperature = FormatTemperature(hardware);
+            if (temperature == "non disponibile" && fallbackTemperatureSensors is not null)
+            {
+                var fallback = fallbackTemperatureSensors.OrderByDescending(s => s.Value).FirstOrDefault();
+                if (fallback is not null)
+                    temperature = $"{fallback.Value:0.0} °C ({fallback.Name})";
+            }
+            report.AppendLine(FormatLine("Temperatura", temperature));
             var load = hardware.Sensors
                 .Where(s => s.SensorType == SensorType.Load && s.Value.HasValue)
                 .OrderByDescending(s => s.Value)
@@ -629,6 +642,21 @@ internal sealed class HardwareInfoProvider : IDisposable
 
     private sealed record RamModuleInfo(ulong CapacityBytes, string Type, uint SpeedMhz, string Manufacturer);
     private sealed record DiskInfo(string Name, ulong SizeBytes, string Type, string Health);
+
+    private sealed class UpdateVisitor : IVisitor
+    {
+        public void VisitComputer(IComputer target) => target.Traverse(this);
+
+        public void VisitHardware(IHardware target)
+        {
+            target.Update();
+            foreach (var subHardware in target.SubHardware)
+                subHardware.Accept(this);
+        }
+
+        public void VisitSensor(ISensor sensor) { }
+        public void VisitParameter(IParameter parameter) { }
+    }
 }
 
 internal static class ComputerInfo
