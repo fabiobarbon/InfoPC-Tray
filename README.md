@@ -15,7 +15,7 @@ Applicazione portatile per Windows 11 che mostra, dall'area di notifica:
 - calibrazione DPI per rendere precisa la misura fisica sul monitor;
 - posizione e impostazioni dei righelli salvate automaticamente.
 
-## Righelli (v1.3.2)
+## Righelli (v1.3.3)
 
 Fare clic con il pulsante destro sull'icona IP vicino all'orologio e aprire il
 menu `Righello`. Da qui si possono mostrare il righello 1, il righello 2 oppure
@@ -25,6 +25,11 @@ millimetri e regolare immediatamente la trasparenza con un cursore.
 La voce `Posizione dello zero` permette, separatamente per ciascun righello, di
 partire da zero a sinistra/in alto oppure di collocare lo zero al centro, con
 valori negativi da un lato e positivi dall'altro.
+
+InfoPC-Tray consente una sola istanza in esecuzione. I sensori e gli
+aggiornamenti hardware vengono attivati esclusivamente quando la scheda
+`Hardware in tempo reale` è visibile; passando alla scheda Rete o nascondendo
+la finestra, l'aggiornamento viene arrestato.
 
 In `Impostazioni righelli` si scelgono unita' di misura, lunghezza, trasparenza,
 orientamento e DPI calibrati. Per i millimetri reali confrontare la scala a

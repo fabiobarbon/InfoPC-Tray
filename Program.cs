@@ -12,9 +12,20 @@ namespace InfoPCTray;
 
 internal static class Program
 {
+    private const string SingleInstanceMutexName = @"Local\InfoPC-Tray-FabioBarbon-RobertoBertella";
+
     [STAThread]
     private static void Main()
     {
+        using var instanceMutex = new Mutex(true, SingleInstanceMutexName, out var isFirstInstance);
+        if (!isFirstInstance)
+        {
+            MessageBox.Show(
+                "InfoPC-Tray è già in esecuzione. Controlla l'icona IP vicino all'orologio.",
+                "InfoPC-Tray", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
         ApplicationConfiguration.Initialize();
         Application.Run(new TrayApplicationContext());
     }
@@ -166,7 +177,7 @@ internal sealed class InfoForm : Form
     private readonly RichTextBox networkOutput;
     private readonly RichTextBox hardwareOutput;
     private readonly TabControl pages;
-    private readonly HardwareInfoProvider hardwareProvider;
+    private HardwareInfoProvider? hardwareProvider;
     private readonly System.Windows.Forms.Timer hardwareTimer;
     private bool exiting;
     private readonly bool darkTheme = IsWindowsDarkTheme();
@@ -213,10 +224,11 @@ internal sealed class InfoForm : Form
         {
             driverButton.Visible = pages.SelectedIndex == 1;
             buttons.Width = driverButton.Visible ? 405 : 240;
+            UpdateHardwareActivity();
         };
         var signature = new Label
         {
-            Text = "Fabio Barbon & Roberto Bertella Software (2026)  -  v.1.3.2",
+            Text = "Fabio Barbon & Roberto Bertella Software (2026)  -  v.1.3.3",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft,
             Padding = new Padding(10, 0, 0, 0),
@@ -237,11 +249,9 @@ internal sealed class InfoForm : Form
         Controls.Add(titleAccent);
         ApplyTheme(pages, bottomBar, signature);
 
-        hardwareProvider = new HardwareInfoProvider();
         hardwareTimer = new System.Windows.Forms.Timer { Interval = 2000 };
         hardwareTimer.Tick += (_, _) => RefreshHardware();
-        hardwareTimer.Start();
-        RefreshHardware();
+        VisibleChanged += (_, _) => UpdateHardwareActivity();
 
         FormClosing += (_, e) =>
         {
@@ -381,10 +391,31 @@ internal sealed class InfoForm : Form
 
     private void RefreshHardware()
     {
+        if (!Visible || pages.SelectedIndex != 1 || hardwareProvider is null)
+            return;
         var text = hardwareProvider.GetReport();
         SetBoxText(hardwareOutput, text);
         HighlightHardwareLabels(hardwareOutput);
         hardwareOutput.Select(0, 0);
+    }
+
+    private void UpdateHardwareActivity()
+    {
+        var shouldRun = Visible && pages.SelectedIndex == 1;
+        if (!shouldRun)
+        {
+            hardwareTimer.Stop();
+            return;
+        }
+
+        if (hardwareProvider is null)
+        {
+            hardwareOutput.Text = "Inizializzazione dei sensori hardware in corso...";
+            hardwareProvider = new HardwareInfoProvider();
+        }
+
+        RefreshHardware();
+        hardwareTimer.Start();
     }
 
     private static void SetBoxText(RichTextBox box, string text)
@@ -448,7 +479,7 @@ internal sealed class InfoForm : Form
         exiting = true;
         hardwareTimer.Stop();
         hardwareTimer.Dispose();
-        hardwareProvider.Dispose();
+        hardwareProvider?.Dispose();
         Close();
     }
 }
