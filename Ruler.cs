@@ -5,6 +5,7 @@ namespace InfoPCTray;
 
 internal enum RulerUnit { Pixels, Millimeters }
 internal enum RulerOrientation { Horizontal, Vertical }
+internal enum RulerZeroPosition { Start, Center }
 
 internal sealed class RulerSettings
 {
@@ -14,6 +15,8 @@ internal sealed class RulerSettings
     public decimal CalibratedDpi { get; set; } = 96;
     public RulerOrientation Ruler1Orientation { get; set; } = RulerOrientation.Horizontal;
     public RulerOrientation Ruler2Orientation { get; set; } = RulerOrientation.Vertical;
+    public RulerZeroPosition Ruler1ZeroPosition { get; set; } = RulerZeroPosition.Start;
+    public RulerZeroPosition Ruler2ZeroPosition { get; set; } = RulerZeroPosition.Start;
     public Point Ruler1Position { get; set; } = new(100, 100);
     public Point Ruler2Position { get; set; } = new(160, 160);
 }
@@ -101,6 +104,8 @@ internal sealed class RulerForm : Form
     private float pixelsPerUnit;
     private readonly ToolStripMenuItem pixelsItem;
     private readonly ToolStripMenuItem millimetersItem;
+    private readonly ToolStripMenuItem zeroStartItem;
+    private readonly ToolStripMenuItem zeroCenterItem;
     private readonly TrackBar opacitySlider;
 
     public event EventHandler<RulerSettings>? SettingsChanged;
@@ -127,6 +132,15 @@ internal sealed class RulerForm : Form
         unitMenu.DropDownItems.Add(pixelsItem);
         unitMenu.DropDownItems.Add(millimetersItem);
         menu.Items.Add(unitMenu);
+
+        var zeroMenu = new ToolStripMenuItem("Posizione dello zero");
+        zeroStartItem = new ToolStripMenuItem("A sinistra / in alto") { CheckOnClick = false };
+        zeroCenterItem = new ToolStripMenuItem("Al centro") { CheckOnClick = false };
+        zeroStartItem.Click += (_, _) => ChangeZeroPosition(RulerZeroPosition.Start);
+        zeroCenterItem.Click += (_, _) => ChangeZeroPosition(RulerZeroPosition.Center);
+        zeroMenu.DropDownItems.Add(zeroStartItem);
+        zeroMenu.DropDownItems.Add(zeroCenterItem);
+        menu.Items.Add(zeroMenu);
 
         var opacityLabel = new ToolStripLabel("Trasparenza")
         {
@@ -197,10 +211,23 @@ internal sealed class RulerForm : Form
         SettingsChanged?.Invoke(this, settings);
     }
 
+    private void ChangeZeroPosition(RulerZeroPosition position)
+    {
+        if (index == 0)
+            settings.Ruler1ZeroPosition = position;
+        else
+            settings.Ruler2ZeroPosition = position;
+        Invalidate();
+        SettingsChanged?.Invoke(this, settings);
+    }
+
     private void RefreshContextMenu()
     {
         pixelsItem.Checked = settings.Unit == RulerUnit.Pixels;
         millimetersItem.Checked = settings.Unit == RulerUnit.Millimeters;
+        var zeroPosition = index == 0 ? settings.Ruler1ZeroPosition : settings.Ruler2ZeroPosition;
+        zeroStartItem.Checked = zeroPosition == RulerZeroPosition.Start;
+        zeroCenterItem.Checked = zeroPosition == RulerZeroPosition.Center;
         var value = Math.Clamp(settings.OpacityPercent, opacitySlider.Minimum, opacitySlider.Maximum);
         if (opacitySlider.Value != value) opacitySlider.Value = value;
     }
@@ -224,9 +251,18 @@ internal sealed class RulerForm : Form
         var unitName = settings.Unit == RulerUnit.Pixels ? "px" : "mm";
         e.Graphics.DrawString($"R{index + 1}  {unitName}", titleFont, Brushes.Black, 4, 45);
 
-        for (float value = 0; value <= maximumUnits; value += unitStep)
+        var zeroPosition = index == 0 ? settings.Ruler1ZeroPosition : settings.Ruler2ZeroPosition;
+        var centerOffset = zeroPosition == RulerZeroPosition.Center ? length / 2f : 0f;
+        var firstValue = zeroPosition == RulerZeroPosition.Center
+            ? -(float)Math.Floor(maximumUnits / 2f / unitStep) * unitStep
+            : 0f;
+        var lastValue = zeroPosition == RulerZeroPosition.Center
+            ? (float)Math.Floor(maximumUnits / 2f / unitStep) * unitStep
+            : maximumUnits;
+
+        for (float value = firstValue; value <= lastValue; value += unitStep)
         {
-            var coordinate = (int)Math.Round(value * pixelsPerUnit);
+            var coordinate = (int)Math.Round(centerOffset + value * pixelsPerUnit);
             var integerValue = (int)Math.Round(value);
             var majorEvery = settings.Unit == RulerUnit.Pixels ? 50 : 10;
             var mediumEvery = settings.Unit == RulerUnit.Pixels ? 10 : 5;
@@ -351,6 +387,8 @@ internal sealed class RulerSettingsForm : Form
             CalibratedDpi = dpi.Value,
             Ruler1Orientation = orientation1.SelectedIndex == 0 ? RulerOrientation.Horizontal : RulerOrientation.Vertical,
             Ruler2Orientation = orientation2.SelectedIndex == 0 ? RulerOrientation.Horizontal : RulerOrientation.Vertical,
+            Ruler1ZeroPosition = original.Ruler1ZeroPosition,
+            Ruler2ZeroPosition = original.Ruler2ZeroPosition,
             Ruler1Position = original.Ruler1Position,
             Ruler2Position = original.Ruler2Position
         };

@@ -216,7 +216,7 @@ internal sealed class InfoForm : Form
         };
         var signature = new Label
         {
-            Text = "Fabio Barbon & Roberto Bertella Software (2026)  -  v.1.3.1",
+            Text = "Fabio Barbon & Roberto Bertella Software (2026)  -  v.1.3.2",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft,
             Padding = new Padding(10, 0, 0, 0),
