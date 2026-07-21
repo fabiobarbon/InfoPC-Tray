@@ -26,14 +26,40 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private readonly NotifyIcon trayIcon;
     private readonly ToolStripMenuItem startupItem;
+    private readonly ToolStripMenuItem ruler1Item;
+    private readonly ToolStripMenuItem ruler2Item;
+    private readonly RulerManager rulerManager;
     private InfoForm? infoForm;
 
     public TrayApplicationContext()
     {
+        rulerManager = new RulerManager();
         var menu = new ContextMenuStrip();
         menu.Items.Add("Mostra informazioni", null, async (_, _) => await ShowInformationAsync());
         menu.Items.Add("Copia negli appunti", null, async (_, _) => await CopyInformationAsync());
         menu.Items.Add("Aggiorna", null, async (_, _) => await RefreshInformationAsync());
+        menu.Items.Add(new ToolStripSeparator());
+
+        var rulerMenu = new ToolStripMenuItem("Righello");
+        ruler1Item = new ToolStripMenuItem("Mostra righello 1") { CheckOnClick = true };
+        ruler2Item = new ToolStripMenuItem("Mostra righello 2") { CheckOnClick = true };
+        ruler1Item.CheckedChanged += (_, _) => rulerManager.SetVisible(0, ruler1Item.Checked);
+        ruler2Item.CheckedChanged += (_, _) => rulerManager.SetVisible(1, ruler2Item.Checked);
+        rulerMenu.DropDownItems.Add(ruler1Item);
+        rulerMenu.DropDownItems.Add(ruler2Item);
+        rulerMenu.DropDownItems.Add(new ToolStripSeparator());
+        rulerMenu.DropDownItems.Add("Impostazioni righelli...", null, (_, _) =>
+        {
+            using var dialog = new RulerSettingsForm(rulerManager.Settings);
+            if (dialog.ShowDialog() == DialogResult.OK)
+                rulerManager.ApplySettings(dialog.Result);
+        });
+        rulerMenu.DropDownItems.Add("Nascondi entrambi", null, (_, _) =>
+        {
+            ruler1Item.Checked = false;
+            ruler2Item.Checked = false;
+        });
+        menu.Items.Add(rulerMenu);
         menu.Items.Add(new ToolStripSeparator());
 
         startupItem = new ToolStripMenuItem("Avvia automaticamente con Windows")
@@ -110,6 +136,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void ExitApplication()
     {
         trayIcon.Visible = false;
+        rulerManager.Dispose();
         infoForm?.CloseForExit();
         trayIcon.Dispose();
         ExitThread();
@@ -189,7 +216,7 @@ internal sealed class InfoForm : Form
         };
         var signature = new Label
         {
-            Text = "Fabio Barbon & Roberto Bertella Software (2026)  -  v.1.2",
+            Text = "Fabio Barbon & Roberto Bertella Software (2026)  -  v.1.3",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft,
             Padding = new Padding(10, 0, 0, 0),

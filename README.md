@@ -10,6 +10,21 @@ Applicazione portatile per Windows 11 che mostra, dall'area di notifica:
   RAM e dischi;
 - descrizione, capacita', tipo e stato dei dischi quando disponibili;
 - quantita', tipo, velocita' e memoria RAM disponibile.
+- uno o due righelli sempre in primo piano, orizzontali o verticali;
+- misura in pixel o millimetri, lunghezza e trasparenza regolabili;
+- calibrazione DPI per rendere precisa la misura fisica sul monitor;
+- posizione e impostazioni dei righelli salvate automaticamente.
+
+## Righelli (v1.3)
+
+Fare clic con il pulsante destro sull'icona IP vicino all'orologio e aprire il
+menu `Righello`. Da qui si possono mostrare il righello 1, il righello 2 oppure
+entrambi. I righelli si trascinano tenendo premuto il pulsante sinistro; con il
+pulsante destro si possono ruotare o nascondere.
+
+In `Impostazioni righelli` si scelgono unita' di misura, lunghezza, trasparenza,
+orientamento e DPI calibrati. Per i millimetri reali confrontare la scala a
+video con un righello fisico e correggere il valore DPI.
 
 Il programma non richiede privilegi di amministratore. Le porte locali in ascolto non coincidono necessariamente con le porte inoltrate dal router verso Internet.
 
