@@ -8,7 +8,7 @@
     <AssemblyName>InfoPC-Tray</AssemblyName>
     <RootNamespace>InfoPCTray</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.3.3</Version>
+    <Version>1.3.4</Version>
     <Company>Fabio Barbon &amp; Roberto Bertella Software</Company>
     <Copyright>Copyright © 2026 Fabio Barbon &amp; Roberto Bertella Software</Copyright>
   </PropertyGroup>

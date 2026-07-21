@@ -107,6 +107,8 @@ internal sealed class RulerForm : Form
     private readonly ToolStripMenuItem zeroStartItem;
     private readonly ToolStripMenuItem zeroCenterItem;
     private readonly TrackBar opacitySlider;
+    private Point? hoverPoint;
+    private int extensionPixels;
 
     public event EventHandler<RulerSettings>? SettingsChanged;
 
@@ -119,9 +121,12 @@ internal sealed class RulerForm : Form
         TopMost = true;
         DoubleBuffered = true;
         StartPosition = FormStartPosition.Manual;
-        BackColor = Color.FromArgb(255, 244, 184);
-        Cursor = Cursors.SizeAll;
+        BackColor = Color.Magenta;
+        TransparencyKey = Color.Magenta;
+        Cursor = Cursors.Default;
         MouseDown += BeginDrag;
+        MouseMove += TrackMouse;
+        MouseLeave += (_, _) => { hoverPoint = null; Invalidate(); };
 
         var menu = new ContextMenuStrip { AutoSize = true };
         var unitMenu = new ToolStripMenuItem("Unità di misura");
@@ -192,9 +197,11 @@ internal sealed class RulerForm : Form
         orientation = index == 0 ? value.Ruler1Orientation : value.Ruler2Orientation;
         var dpi = Math.Max(20f, (float)value.CalibratedDpi);
         pixelsPerUnit = value.Unit == RulerUnit.Pixels ? 1f : dpi / 25.4f;
+        extensionPixels = Math.Max(5, (int)Math.Round(dpi / 25.4f * 5f));
         var lengthPixels = Math.Clamp((int)Math.Round((float)value.Length * pixelsPerUnit), 80, 12000);
         Size = orientation == RulerOrientation.Horizontal
-            ? new Size(lengthPixels, 66) : new Size(66, lengthPixels);
+            ? new Size(lengthPixels, 66 + extensionPixels)
+            : new Size(66 + extensionPixels, lengthPixels);
         Opacity = Math.Clamp(value.OpacityPercent / 100d, 0.2d, 1d);
         Location = index == 0 ? value.Ruler1Position : value.Ruler2Position;
         Invalidate();
@@ -239,17 +246,22 @@ internal sealed class RulerForm : Form
         e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
         var horizontal = orientation == RulerOrientation.Horizontal;
         var length = horizontal ? ClientSize.Width : ClientSize.Height;
+        var bodyOrigin = extensionPixels;
+        var bodyRectangle = horizontal
+            ? new Rectangle(0, bodyOrigin, ClientSize.Width, 66)
+            : new Rectangle(bodyOrigin, 0, 66, ClientSize.Height);
         var unitStep = settings.Unit == RulerUnit.Pixels ? 5f : 1f;
-        var stepPixels = Math.Max(1f, unitStep * pixelsPerUnit);
         var maximumUnits = length / pixelsPerUnit;
         using var linePen = new Pen(Color.FromArgb(45, 45, 45), 1);
         using var borderPen = new Pen(Color.FromArgb(70, 70, 70), 1);
         using var labelFont = new Font("Segoe UI", 8f, FontStyle.Regular, GraphicsUnit.Point);
         using var titleFont = new Font("Segoe UI", 8f, FontStyle.Bold, GraphicsUnit.Point);
 
-        e.Graphics.DrawRectangle(borderPen, 0, 0, ClientSize.Width - 1, ClientSize.Height - 1);
+        using var rulerBrush = new SolidBrush(Color.FromArgb(255, 244, 184));
+        e.Graphics.FillRectangle(rulerBrush, bodyRectangle);
+        e.Graphics.DrawRectangle(borderPen, bodyRectangle.X, bodyRectangle.Y,
+            bodyRectangle.Width - 1, bodyRectangle.Height - 1);
         var unitName = settings.Unit == RulerUnit.Pixels ? "px" : "mm";
-        e.Graphics.DrawString($"R{index + 1}  {unitName}", titleFont, Brushes.Black, 4, 45);
 
         var zeroPosition = index == 0 ? settings.Ruler1ZeroPosition : settings.Ruler2ZeroPosition;
         var centerOffset = zeroPosition == RulerZeroPosition.Center ? length / 2f : 0f;
@@ -272,24 +284,92 @@ internal sealed class RulerForm : Form
 
             if (horizontal)
             {
-                e.Graphics.DrawLine(linePen, coordinate, 0, coordinate, tick);
+                e.Graphics.DrawLine(linePen, coordinate, bodyOrigin, coordinate, bodyOrigin + tick);
                 if (isMajor)
-                    e.Graphics.DrawString(integerValue.ToString(), labelFont, Brushes.Black, coordinate + 2, 27);
+                    e.Graphics.DrawString(integerValue.ToString(), labelFont, Brushes.Black, coordinate + 2, bodyOrigin + 27);
             }
             else
             {
-                e.Graphics.DrawLine(linePen, 0, coordinate, tick, coordinate);
+                e.Graphics.DrawLine(linePen, bodyOrigin, coordinate, bodyOrigin + tick, coordinate);
                 if (isMajor)
-                    e.Graphics.DrawString(integerValue.ToString(), labelFont, Brushes.Black, 28, coordinate + 1);
+                    e.Graphics.DrawString(integerValue.ToString(), labelFont, Brushes.Black, bodyOrigin + 28, coordinate + 1);
             }
         }
+
+        DrawMouseIndicator(e.Graphics, horizontal, bodyOrigin, length, unitName, titleFont);
+        DrawApplicationLabel(e.Graphics, horizontal, bodyOrigin, length, labelFont);
+    }
+
+    private void DrawMouseIndicator(Graphics graphics, bool horizontal, int bodyOrigin, int length,
+        string unitName, Font font)
+    {
+        if (hoverPoint is null)
+        {
+            graphics.DrawString($"R{index + 1}  {unitName}", font, Brushes.Black,
+                horizontal ? 4 : bodyOrigin + 4, horizontal ? bodyOrigin + 45 : 4);
+            return;
+        }
+
+        var axisCoordinate = horizontal ? hoverPoint.Value.X : hoverPoint.Value.Y;
+        axisCoordinate = Math.Clamp(axisCoordinate, 0, Math.Max(0, length - 1));
+        var zeroPosition = index == 0 ? settings.Ruler1ZeroPosition : settings.Ruler2ZeroPosition;
+        var zeroCoordinate = zeroPosition == RulerZeroPosition.Center ? length / 2f : 0f;
+        var measuredValue = (axisCoordinate - zeroCoordinate) / pixelsPerUnit;
+        var valueText = settings.Unit == RulerUnit.Pixels
+            ? $"R{index + 1}  {Math.Round(measuredValue):0} px"
+            : $"R{index + 1}  {measuredValue:0.0} mm";
+        using var guidePen = new Pen(Color.FromArgb(0, 90, 190), 2);
+        var textSize = graphics.MeasureString(valueText, font);
+
+        if (horizontal)
+        {
+            graphics.DrawLine(guidePen, axisCoordinate, 0, axisCoordinate, bodyOrigin + 42);
+            var textX = Math.Clamp(axisCoordinate - textSize.Width / 2f, 2f,
+                Math.Max(2f, ClientSize.Width - textSize.Width - 2f));
+            graphics.DrawString(valueText, font, Brushes.Black, textX, bodyOrigin + 45);
+        }
+        else
+        {
+            graphics.DrawLine(guidePen, 0, axisCoordinate, bodyOrigin + 42, axisCoordinate);
+            var textY = Math.Clamp(axisCoordinate - textSize.Height / 2f, 2f,
+                Math.Max(2f, ClientSize.Height - textSize.Height - 2f));
+            graphics.DrawString(valueText, font, Brushes.Black, bodyOrigin + 4, textY);
+        }
+    }
+
+    private static void DrawApplicationLabel(Graphics graphics, bool horizontal, int bodyOrigin,
+        int length, Font font)
+    {
+        const string text = "InfoPC-Tray v1.3.4";
+        using var brush = new SolidBrush(Color.FromArgb(90, 90, 90));
+        if (horizontal)
+        {
+            var size = graphics.MeasureString(text, font);
+            graphics.DrawString(text, font, brush, Math.Max(2, length - size.Width - 5), bodyOrigin + 47);
+        }
+        else
+        {
+            var state = graphics.Save();
+            graphics.TranslateTransform(bodyOrigin + 47, Math.Max(5, length - 5));
+            graphics.RotateTransform(-90);
+            graphics.DrawString(text, font, brush, 0, 0);
+            graphics.Restore(state);
+        }
+    }
+
+    private void TrackMouse(object? sender, MouseEventArgs e)
+    {
+        hoverPoint = e.Location;
+        Invalidate();
     }
 
     private void BeginDrag(object? sender, MouseEventArgs e)
     {
         if (e.Button != MouseButtons.Left) return;
+        Cursor = Cursors.SizeAll;
         ReleaseCapture();
         SendMessage(Handle, 0xA1, 0x2, 0);
+        Cursor = Cursors.Default;
     }
 
     [DllImport("user32.dll")]
