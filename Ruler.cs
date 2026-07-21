@@ -55,6 +55,7 @@ internal sealed class RulerManager : IDisposable
     private RulerForm CreateRuler(int index)
     {
         var form = new RulerForm(index);
+        form.SettingsChanged += (_, updated) => ApplySettings(updated);
         form.LocationChanged += (_, _) =>
         {
             if (!form.Visible) return;
@@ -98,6 +99,11 @@ internal sealed class RulerForm : Form
     private RulerSettings settings = new();
     private RulerOrientation orientation;
     private float pixelsPerUnit;
+    private readonly ToolStripMenuItem pixelsItem;
+    private readonly ToolStripMenuItem millimetersItem;
+    private readonly TrackBar opacitySlider;
+
+    public event EventHandler<RulerSettings>? SettingsChanged;
 
     public RulerForm(int index)
     {
@@ -112,7 +118,46 @@ internal sealed class RulerForm : Form
         Cursor = Cursors.SizeAll;
         MouseDown += BeginDrag;
 
-        var menu = new ContextMenuStrip();
+        var menu = new ContextMenuStrip { AutoSize = true };
+        var unitMenu = new ToolStripMenuItem("Unità di misura");
+        pixelsItem = new ToolStripMenuItem("Pixel") { CheckOnClick = false };
+        millimetersItem = new ToolStripMenuItem("Millimetri") { CheckOnClick = false };
+        pixelsItem.Click += (_, _) => ChangeUnit(RulerUnit.Pixels);
+        millimetersItem.Click += (_, _) => ChangeUnit(RulerUnit.Millimeters);
+        unitMenu.DropDownItems.Add(pixelsItem);
+        unitMenu.DropDownItems.Add(millimetersItem);
+        menu.Items.Add(unitMenu);
+
+        var opacityLabel = new ToolStripLabel("Trasparenza")
+        {
+            Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+            Margin = new Padding(5, 5, 5, 0)
+        };
+        menu.Items.Add(opacityLabel);
+        opacitySlider = new TrackBar
+        {
+            Minimum = 20,
+            Maximum = 100,
+            TickFrequency = 10,
+            SmallChange = 5,
+            LargeChange = 10,
+            Width = 190,
+            Height = 42,
+            AutoSize = false
+        };
+        opacitySlider.ValueChanged += (_, _) =>
+        {
+            settings.OpacityPercent = opacitySlider.Value;
+            Opacity = opacitySlider.Value / 100d;
+        };
+        opacitySlider.MouseUp += (_, _) => SettingsChanged?.Invoke(this, settings);
+        menu.Items.Add(new ToolStripControlHost(opacitySlider)
+        {
+            AutoSize = false,
+            Size = new Size(200, 46),
+            Margin = new Padding(4, 0, 4, 3)
+        });
+        menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Ruota righello", null, (_, _) =>
         {
             orientation = orientation == RulerOrientation.Horizontal
@@ -120,8 +165,10 @@ internal sealed class RulerForm : Form
             if (index == 0) settings.Ruler1Orientation = orientation;
             else settings.Ruler2Orientation = orientation;
             Apply(settings);
+            SettingsChanged?.Invoke(this, settings);
         });
         menu.Items.Add("Nascondi", null, (_, _) => Hide());
+        menu.Opening += (_, _) => RefreshContextMenu();
         ContextMenuStrip = menu;
     }
 
@@ -137,6 +184,25 @@ internal sealed class RulerForm : Form
         Opacity = Math.Clamp(value.OpacityPercent / 100d, 0.2d, 1d);
         Location = index == 0 ? value.Ruler1Position : value.Ruler2Position;
         Invalidate();
+    }
+
+    private void ChangeUnit(RulerUnit newUnit)
+    {
+        if (settings.Unit == newUnit) return;
+        settings.Unit = newUnit;
+        // Offre una lunghezza iniziale sensata quando si passa da una scala all'altra.
+        settings.Length = newUnit == RulerUnit.Millimeters
+            ? Math.Clamp(Math.Round(settings.Length * 25.4M / settings.CalibratedDpi, 1), 10, 10000)
+            : Math.Clamp(Math.Round(settings.Length * settings.CalibratedDpi / 25.4M, 0), 10, 10000);
+        SettingsChanged?.Invoke(this, settings);
+    }
+
+    private void RefreshContextMenu()
+    {
+        pixelsItem.Checked = settings.Unit == RulerUnit.Pixels;
+        millimetersItem.Checked = settings.Unit == RulerUnit.Millimeters;
+        var value = Math.Clamp(settings.OpacityPercent, opacitySlider.Minimum, opacitySlider.Maximum);
+        if (opacitySlider.Value != value) opacitySlider.Value = value;
     }
 
     protected override void OnPaint(PaintEventArgs e)
